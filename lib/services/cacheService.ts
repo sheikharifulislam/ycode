@@ -4,6 +4,16 @@ import { getSupabaseAdmin } from '@/lib/supabase-server';
 import { buildSlugPath } from '@/lib/page-utils';
 import type { Page, PageFolder } from '@/types';
 
+/**
+ * Maximum number of routes to warm in a single invalidation event.
+ *
+ * Warming is a best-effort optimisation, not a correctness requirement —
+ * the long tail of routes will self-warm on their first real visit. The
+ * cap protects against runaway cost when a dynamic page expands to
+ * hundreds of CMS items, and against Vercel function timeout limits.
+ */
+const MAX_ROUTES_TO_WARM = 50;
+
 type SupabaseAdmin = NonNullable<Awaited<ReturnType<typeof getSupabaseAdmin>>>;
 
 const SUPABASE_IN_LIMIT = 500;
@@ -391,4 +401,72 @@ export async function selectiveInvalidation(
   }
 
   return { strategy: 'selective', invalidatedRoutes: routePaths };
+}
+
+/**
+ * Resolve every URL the public site currently serves from published pages.
+ * Includes static pages, locale variants, and every dynamic-page instance
+ * (one URL per published CMS item).
+ *
+ * Used to warm the cache after a full invalidation so the first real
+ * visitor doesn't pay the cold-cache cost.
+ */
+export async function getAllPublishedRoutes(): Promise<string[]> {
+  const client = await getSupabaseAdmin();
+  if (!client) return [];
+
+  const { data: pages } = await client
+    .from('pages')
+    .select('id')
+    .eq('is_published', true)
+    .is('deleted_at', null);
+
+  if (!pages || pages.length === 0) return [];
+
+  return getRoutePathsForPages(pages.map((p) => p.id));
+}
+
+/**
+ * Background-warm a set of routes by issuing GET requests to them, so the
+ * next real visitor sees x-vercel-cache: HIT instead of STALE/MISS.
+ *
+ * Uses Vercel's waitUntil so warming runs AFTER the response is sent: zero
+ * added latency on the triggering request. Capped at MAX_ROUTES_TO_WARM
+ * to bound cost and stay within Vercel function lifetime limits — long
+ * tail of routes self-warms on first real visit.
+ *
+ * Vercel-only: warming via internal fetch only makes sense when there's a
+ * CDN in front of the function. No-ops elsewhere.
+ *
+ * @returns null if not on Vercel, no host header, no routes, or warming
+ *   failed to schedule. Otherwise reports how many were warmed vs total.
+ */
+export async function warmRoutes(
+  routes: string[],
+  request: Request,
+): Promise<{ warmed: number; total: number } | null> {
+  if (process.env.VERCEL !== '1' || routes.length === 0) return null;
+
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (!host) return null;
+
+  const proto = request.headers.get('x-forwarded-proto') ?? 'https';
+  const baseUrl = `${proto}://${host}`;
+  const toWarm = routes.slice(0, MAX_ROUTES_TO_WARM);
+
+  try {
+    const { waitUntil } = await import('@vercel/functions');
+    waitUntil(
+      Promise.allSettled(
+        toWarm.map((route) =>
+          fetch(`${baseUrl}/${route}`, {
+            signal: AbortSignal.timeout(15000),
+          }).catch(() => null),
+        ),
+      ),
+    );
+    return { warmed: toWarm.length, total: routes.length };
+  } catch {
+    return null;
+  }
 }

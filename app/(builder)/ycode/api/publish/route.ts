@@ -5,7 +5,7 @@ import { publishCollectionWithItems, groupItemsByCollection, cleanupDeletedColle
 import { publishLocalisation } from '@/lib/services/localisationService';
 import { publishFolders } from '@/lib/services/folderService';
 import { publishCSS, savePublishedAt } from '@/lib/services/settingsService';
-import { clearAllCache, selectiveInvalidation } from '@/lib/services/cacheService';
+import { clearAllCache, selectiveInvalidation, warmRoutes, getAllPublishedRoutes } from '@/lib/services/cacheService';
 import { findAffectedPages } from '@/lib/repositories/pageLayersRepository';
 import { getAllDraftPages, hardDeleteSoftDeletedPages } from '@/lib/repositories/pageRepository';
 import { publishComponents, getUnpublishedComponents, hardDeleteSoftDeletedComponents } from '@/lib/repositories/componentRepository';
@@ -617,12 +617,16 @@ export async function POST(request: NextRequest) {
         indirectlyAffectedPageIds,
       );
 
-      // Capture the live routes we'll warm later. We only warm routes that
-      // still exist (the ones selectiveInvalidation returned) — not deleted
-      // or renamed ones added below, since their URLs no longer render.
+      // Capture the live routes we'll warm later. For selective invalidation
+      // we warm exactly the routes that were invalidated. For full
+      // invalidation we enumerate every published route — affects every
+      // page anyway, and visitors shouldn't pay the cold-cache cost just
+      // because a color variable changed. Capped inside warmRoutes.
+      // Deleted/renamed routes are skipped intentionally — their URLs no
+      // longer resolve.
       const liveRoutesToWarm = invalidationResult.strategy === 'selective'
         ? [...invalidationResult.invalidatedRoutes]
-        : [];
+        : await getAllPublishedRoutes();
 
       // Invalidate routes of deleted/renamed pages and deleted CMS items
       if (invalidationResult.strategy !== 'full') {
@@ -664,46 +668,13 @@ export async function POST(request: NextRequest) {
       );
 
       // After invalidation, prime the affected pages in the background so the
-      // first real visitor doesn't get x-vercel-cache: STALE.
-      // invalidateByTag marks entries stale rather than hard-purging; the next
-      // request to a stale entry serves the OLD body and kicks off a
-      // background revalidation. We ARE that next request — by warming each
-      // route from the publish handler, we absorb the STALE and trigger the
-      // revalidation ourselves, so the real visitor's first hit is HIT.
-      //
-      // Uses Vercel's waitUntil so warming runs AFTER the publish response is
-      // sent: zero added publish latency. Capped to avoid runaway cost when a
-      // dynamic page maps to hundreds of CMS items — long-tail items will
-      // simply self-warm on their first real visit.
-      //
-      // Skipped on full invalidation (rare) — enumerating every route and
-      // warming a whole site on every global change isn't worth the cost.
-      if (liveRoutesToWarm.length > 0 && process.env.VERCEL === '1') {
-        const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
-        if (host) {
-          const proto = request.headers.get('x-forwarded-proto') ?? 'https';
-          const baseUrl = `${proto}://${host}`;
-          const MAX_WARM = 50;
-          const toWarm = liveRoutesToWarm.slice(0, MAX_WARM);
-
-          try {
-            const { waitUntil } = await import('@vercel/functions');
-            waitUntil(
-              Promise.allSettled(
-                toWarm.map((route) =>
-                  fetch(`${baseUrl}/${route}`, {
-                    signal: AbortSignal.timeout(15000),
-                  }).catch(() => null),
-                ),
-              ),
-            );
-            console.log(
-              `[Cache] warming ${toWarm.length}${liveRoutesToWarm.length > MAX_WARM ? ` of ${liveRoutesToWarm.length}` : ''} route(s) in background`,
-            );
-          } catch {
-            // Non-fatal: warming is an optimization, not a correctness requirement
-          }
-        }
+      // first real visitor doesn't pay the cold-cache cost. We absorb the
+      // STALE/MISS server-side; the visitor's first hit is HIT.
+      const warmResult = await warmRoutes(liveRoutesToWarm, request);
+      if (warmResult) {
+        console.log(
+          `[Cache] warming ${warmResult.warmed}${warmResult.total > warmResult.warmed ? ` of ${warmResult.total}` : ''} route(s) in background`,
+        );
       }
     } catch {
       // Fallback: if selective invalidation fails, nuke everything

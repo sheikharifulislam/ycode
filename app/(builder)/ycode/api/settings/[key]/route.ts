@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSettingByKey, setSetting } from '@/lib/repositories/settingsRepository';
-import { clearAllCache } from '@/lib/services/cacheService';
+import { clearAllCache, getAllPublishedRoutes, warmRoutes } from '@/lib/services/cacheService';
 
 /**
  * Setting keys that don't affect public-page rendering and therefore should
@@ -74,6 +74,21 @@ export async function PUT(
     // autosaves don't purge the public CDN cache on every edit.
     if (!DRAFT_ONLY_SETTING_KEYS.has(key)) {
       await clearAllCache();
+
+      // Prime the cache so the first visit to any public page after this
+      // settings change doesn't pay the cold-cache cost. Capped inside
+      // warmRoutes; long-tail routes self-warm on first real visit.
+      try {
+        const routes = await getAllPublishedRoutes();
+        const warmResult = await warmRoutes(routes, request);
+        if (warmResult) {
+          console.log(
+            `[Cache] settings (${key}): warming ${warmResult.warmed}${warmResult.total > warmResult.warmed ? ` of ${warmResult.total}` : ''} route(s) in background`,
+          );
+        }
+      } catch {
+        // Non-fatal: warming is an optimization
+      }
     }
 
     return NextResponse.json({
