@@ -22,10 +22,15 @@ export const revalidate = false; // Cache indefinitely until publish invalidates
  * Cached with tag-based revalidation (no time-based stale cache)
  */
 async function fetchPublishedHomepage() {
-  // NOTE: Do NOT include 'all-pages' here. Next.js bug #63509 causes
-  // revalidateTag to also invalidate every other tag on the entry,
-  // which would cascade to all pages sharing 'all-pages'.
-  const tags = ['route-/'];
+  // Tags are both 'route-/' AND 'all-pages':
+  // - route-/ lets selective invalidation purge just this page's data cache
+  // - all-pages lets full invalidation (color variables, redirects, etc.)
+  //   sweep every page's data cache in one invalidateByTag call.
+  // Vercel's invalidateByTag is tag-precise, so no cascade — selective
+  // invalidation of one route doesn't disturb others. (Next.js bug #63509
+  // would apply if we used revalidateTag for selective on Vercel, but we
+  // route exclusively through invalidateByTag here.)
+  const tags = ['route-/', 'all-pages'];
   const opts = { tags, revalidate: false as const };
 
   const [core, layers] = await Promise.all([
@@ -274,7 +279,7 @@ export async function generateMetadata(): Promise<Metadata> {
       baseUrl: getSiteBaseUrl({ globalCanonicalUrl: globalSettings.globalCanonicalUrl }),
     }),
     ['data-for-route-/-meta'],
-    { tags: ['route-/'], revalidate: false }
+    { tags: ['route-/', 'all-pages'], revalidate: false }
   )();
 
   if (baseUrl) {

@@ -151,10 +151,15 @@ export async function generateStaticParams() {
  * Cached per slug and page for revalidation
  */
 async function fetchPublishedPageWithLayers(slugPath: string) {
-  // NOTE: Do NOT include 'all-pages' here. Next.js bug #63509 causes
-  // revalidateTag('route-/X') to also invalidate every other tag on
-  // the entry, which would cascade to all pages sharing 'all-pages'.
-  const tags = [`route-/${slugPath}`];
+  // Tags are both 'route-/X' AND 'all-pages':
+  // - route-/X lets selective invalidation purge just this page's data cache
+  // - all-pages lets full invalidation (color variables, redirects, etc.)
+  //   sweep every page's data cache in one invalidateByTag call.
+  // Vercel's invalidateByTag is tag-precise — invalidating one route's tag
+  // doesn't cascade to entries that only share 'all-pages'. (Next.js bug
+  // #63509 would apply if we used revalidateTag for selective, but we route
+  // exclusively through invalidateByTag on Vercel.)
+  const tags = [`route-/${slugPath}`, 'all-pages'];
   const opts = { tags, revalidate: false as const };
 
   const [core, layers] = await Promise.all([
@@ -186,7 +191,7 @@ async function fetchPublishedPageForMetadata(slugPath: string) {
   return unstable_cache(
     async () => fetchPageByPathForMetadata(slugPath, true),
     [`metadata-/${slugPath}`],
-    { tags: [`route-/${slugPath}`], revalidate: false }
+    { tags: [`route-/${slugPath}`, 'all-pages'], revalidate: false }
   )();
 }
 
@@ -439,7 +444,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       baseUrl: getSiteBaseUrl({ globalCanonicalUrl: globalSettings.globalCanonicalUrl }),
     }),
     [`data-for-route-/${slugPath}-meta`],
-    { tags: [`route-/${slugPath}`], revalidate: false }
+    { tags: [`route-/${slugPath}`, 'all-pages'], revalidate: false }
   )();
 
   if (baseUrl) {
