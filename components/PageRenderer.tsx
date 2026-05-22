@@ -38,7 +38,8 @@ const getCachedPublishedFolders = unstable_cache(
   { tags: ['all-pages'], revalidate: false }
 );
 
-/** Recursively collect all page link refs ({collection_item_id, page_id}) from a Tiptap JSON node */
+/** Recursively collect all page link refs ({collection_item_id, page_id}) from a Tiptap JSON node.
+ * Also descends into pre-resolved layers stored on embedded richTextComponent nodes. */
 function collectTiptapPageLinks(node: any): PageLinkRef[] {
   if (!node || typeof node !== 'object') return [];
   const results: PageLinkRef[] = [];
@@ -49,6 +50,10 @@ function collectTiptapPageLinks(node: any): PageLinkRef[] {
         results.push({ collection_item_id: mark.attrs.page.collection_item_id, page_id: mark.attrs.page.id });
       }
     }
+  }
+  // Pre-resolved layers from rich-text-embedded components (set by resolveTiptapComponentCollections)
+  if (node.type === 'richTextComponent' && Array.isArray(node.attrs?._resolvedLayers)) {
+    results.push(...collectLayerPageLinks(node.attrs._resolvedLayers as Layer[]));
   }
   if (node.content && Array.isArray(node.content)) {
     for (const child of node.content) results.push(...collectTiptapPageLinks(child));
@@ -87,15 +92,34 @@ function collectLayerPageLinks(layers: Layer[]): PageLinkRef[] {
   return results;
 }
 
+/** Recursively scan a Tiptap JSON node for richTextComponent nodes and harvest
+ * slugs from their pre-resolved layers (populated by resolveTiptapComponentCollections). */
+function extractTiptapCollectionItemSlugs(node: any, slugs: Record<string, string>): void {
+  if (!node || typeof node !== 'object') return;
+  if (node.type === 'richTextComponent' && Array.isArray(node.attrs?._resolvedLayers)) {
+    const nested = extractCollectionItemSlugs(node.attrs._resolvedLayers as Layer[]);
+    Object.assign(slugs, nested);
+  }
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) extractTiptapCollectionItemSlugs(child, slugs);
+  }
+}
+
 /**
  * Extract collection item slugs from resolved collection layers.
  * These are populated by resolveCollectionLayers with `_collectionItemId` / `_collectionItemSlug`.
+ * Also descends into pre-resolved layers of rich-text-embedded components so links inside
+ * those components (e.g. "current-collection") can be resolved at render time.
  */
 function extractCollectionItemSlugs(layers: Layer[]): Record<string, string> {
   const slugs: Record<string, string> = {};
   const scan = (layer: Layer) => {
     if (layer._collectionItemId && layer._collectionItemSlug) {
       slugs[layer._collectionItemId] = layer._collectionItemSlug;
+    }
+    const textVar = layer.variables?.text as any;
+    if (textVar?.type === 'dynamic_rich_text' && textVar.data?.content) {
+      extractTiptapCollectionItemSlugs(textVar.data.content, slugs);
     }
     if (layer.children) layer.children.forEach(scan);
   };
