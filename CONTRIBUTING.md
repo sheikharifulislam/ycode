@@ -2,6 +2,16 @@
 
 Thanks for your interest in contributing to Ycode! This guide will help you get started.
 
+## Before You Start
+
+### Small changes (bug fixes, typos, minor improvements)
+
+Open a pull request directly — no prior discussion needed.
+
+### Larger changes (new features, new integrations, new dependencies, architectural changes)
+
+Please open a [Discussion](https://github.com/ycode/ycode/discussions) first so we can align on the approach before you invest significant time. Describe the problem, your proposed solution, and any alternatives you've considered. This helps us give early feedback on direction and avoids situations where a large PR needs fundamental rework.
+
 ## Development Setup
 
 ### Prerequisites
@@ -55,10 +65,10 @@ npm run migrate:make -- migration_name
 
 ## Making Changes
 
-1. Create a new branch from `main`:
+1. Create a new branch from `develop`:
 
    ```bash
-   git checkout -b feat/your-feature-name
+   git checkout -b feat/your-feature-name develop
    ```
 
 2. Make your changes and ensure they pass linting and type checks:
@@ -80,11 +90,13 @@ npm run migrate:make -- migration_name
 
    Use imperative mood, lowercase after the type prefix, and keep the subject line under 50 characters.
 
-4. Push your branch and open a pull request.
+4. Push your branch and open a pull request **targeting the `develop` branch**.
 
 ## Pull Request Guidelines
 
+- **Target `develop`** — PRs to `main` will not be accepted
 - Keep PRs focused — one feature or fix per PR
+- Separate unrelated changes into their own PRs, even if small
 - Include a clear summary of what changed and why
 - Add a test plan describing how to verify the changes
 - Link related issues when applicable
@@ -99,12 +111,15 @@ npm run migrate:make -- migration_name
 
 - Open a [Discussion](https://github.com/ycode/ycode/discussions) to propose new features
 - Describe the use case and why it would be valuable
+- Wait for maintainer feedback before starting implementation
 
 ## Code Style
 
 - TypeScript throughout — no `any` types unless absolutely necessary
 - Functional components with hooks for React
 - Tailwind CSS for styling
+- Use ShadCN components from `components/ui/` for all UI primitives
+- Follow the repository pattern for data access (`lib/repositories/`)
 - The pre-commit hook runs ESLint and type checking automatically
 
 ## License
