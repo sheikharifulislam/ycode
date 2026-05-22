@@ -410,7 +410,7 @@ export default function AnimationInitializer({ layers, injectInitialCSS }: Anima
               }
               isForward = !isForward;
             } else {
-              timeline.restart();
+              timeline.invalidate().restart();
             }
           };
 
