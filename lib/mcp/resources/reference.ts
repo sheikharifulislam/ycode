@@ -44,6 +44,11 @@ const EXAMPLE_PROMPTS = {
     'Set design inline with add_layer to reduce the number of operations',
     'Use add_font + search_google_fonts to add custom fonts before using them',
     'Always publish after completing changes',
+    'For repeating UI primitives, build a component and use create_component_variant for visual flavors',
+    'For tabular data, add_layer template "table" gives a ready-made structure to populate',
+    'For tables inside rich text, use rich_content { type: "table", rows: [[...]], header_row: true }',
+    'For dynamic pages, update_page is_dynamic + update_page_settings.cms is the canonical wiring path',
+    'For lightbox galleries fed by a CMS image field, set lightbox.files_source "cms" + files_field_id',
   ],
 };
 
@@ -81,6 +86,12 @@ export function registerReferenceResources(server: McpServer) {
               grid: '2x2 CSS Grid layout.',
               collection: 'CMS collection list (repeats children for each item).',
               hr: 'Horizontal divider line.',
+              table: 'Data table (<table>). Ships with header + 2 body rows.',
+              thead: '<thead> — add inside a table.',
+              tbody: '<tbody> — add inside a table.',
+              tr: '<tr> — add inside thead or tbody.',
+              td: '<td> — add inside a tr.',
+              th: '<th> — add inside a thead tr.',
             },
             content: {
               heading: 'Heading text (h1). 48px bold.',
@@ -176,6 +187,21 @@ export function registerReferenceResources(server: McpServer) {
             positioning: {
               position: { type: 'enum', values: ['relative', 'absolute', 'fixed', 'sticky'] },
               zIndex: { type: 'string' },
+            },
+            transforms: {
+              translateX: { type: 'css_value', examples: ['10px', '50%'] },
+              translateY: { type: 'css_value', examples: ['10px', '50%'] },
+              scale: { type: 'css_value', examples: ['1', '1.05', '0.95'] },
+              rotate: { type: 'css_value', examples: ['0deg', '45deg', '-90deg'] },
+              skewX: { type: 'css_value', examples: ['0deg', '10deg'] },
+              skewY: { type: 'css_value', examples: ['0deg', '10deg'] },
+              transformOrigin: { type: 'string', examples: ['center', 'top left'] },
+            },
+            transitions: {
+              transitionProperty: { type: 'string', examples: ['all', 'colors', 'transform'] },
+              transitionDuration: { type: 'css_value', examples: ['150ms', '300ms'] },
+              transitionTimingFunction: { type: 'enum', values: ['linear', 'in', 'out', 'in-out'] },
+              transitionDelay: { type: 'css_value', examples: ['0ms', '100ms'] },
             },
           },
         }, null, 2),
