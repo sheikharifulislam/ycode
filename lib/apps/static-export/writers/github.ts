@@ -1,28 +1,30 @@
 /**
- * GitHub-repo writer.
+ * GitHub-repo writer — pure REST API implementation.
  *
- * Clones the target branch (or initializes an empty repo if the branch
- * doesn't exist yet), wipes the working tree, drops in the exported files,
- * commits, and pushes. Each export gets a fresh tmpdir to sidestep stale
- * state and concurrent-export races at the cost of one clone per run.
+ * Pushes exported files to a GitHub repository using the Git Data API,
+ * with no dependency on the `git` binary or any npm packages. This lets
+ * the writer run in serverless environments (Vercel, Cloudflare Workers)
+ * where `git` is unavailable.
  *
- * The token is never put through a shell — git receives args via argv,
- * and config inputs are validated against tight regexes up front.
+ * Flow:
+ *   1. Resolve the branch's current HEAD commit + tree (or detect that
+ *      the branch / repo is empty).
+ *   2. Create a blob for every output file via POST /git/blobs.
+ *   3. Create a root tree that contains exactly the exported files
+ *      (previous tree content is NOT carried forward, so deletions are
+ *      reflected — matching the old clone-wipe-commit behavior).
+ *   4. Create a commit pointing at that tree.
+ *   5. Fast-forward the branch ref (or create it if new).
  */
-
-import fs from 'fs/promises'
-import path from 'path'
 
 import type { ExportConfig } from '../types'
 import type { OutputFile, Writer } from './types'
 
+const GITHUB_API = 'https://api.github.com'
+
 const GITHUB_REPO_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const GITHUB_BRANCH_RE = /^[A-Za-z0-9._/-]+$/
 const GITHUB_TOKEN_RE = /^[A-Za-z0-9_.=-]+$/
-
-interface GithubWriterContext {
-  config: ExportConfig
-}
 
 export async function createGithubWriter(config: ExportConfig): Promise<Writer> {
   if (!GITHUB_REPO_RE.test(config.githubRepo)) {
@@ -35,109 +37,241 @@ export async function createGithubWriter(config: ExportConfig): Promise<Writer> 
     throw new Error('GitHub export selected but `githubToken` looks malformed')
   }
 
-  const ctx: GithubWriterContext = { config }
   return {
     name: 'github',
     async flush(files) {
-      return runGithubFlush(ctx, files)
+      return pushViaApi(config, files)
     },
   }
 }
 
-async function runGithubFlush(
-  ctx: GithubWriterContext,
-  files: OutputFile[],
-): Promise<number> {
-  const { spawn } = await import('node:child_process')
-  const os = await import('node:os')
+// ---------------------------------------------------------------------------
+// Core push logic
+// ---------------------------------------------------------------------------
 
-  const { config } = ctx
+async function pushViaApi(config: ExportConfig, files: OutputFile[]): Promise<number> {
+  const { githubRepo: repo, githubBranch: branch, githubToken: token } = config
   const authorName = config.githubAuthorName.trim() || 'Ycode Static Export'
   const authorEmail = config.githubAuthorEmail.trim() || 'static-export@ycode.local'
 
-  const cloneUrl =
-    `https://x-access-token:${encodeURIComponent(config.githubToken)}@github.com/` +
-    `${config.githubRepo}.git`
+  const headers = apiHeaders(token)
 
-  const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ycode-static-export-'))
-  try {
-    const exec = (args: string[], opts: { env?: NodeJS.ProcessEnv; cwd?: string; stdin?: string } = {}) =>
-      new Promise<{ stdout: string; stderr: string; code: number }>((resolve, reject) => {
-        const child = spawn('git', args, {
-          cwd: opts.cwd ?? workDir,
-          env: { ...process.env, ...opts.env, GIT_TERMINAL_PROMPT: '0' },
-        })
-        let stdout = ''
-        let stderr = ''
-        child.stdout.on('data', (d) => { stdout += d.toString() })
-        child.stderr.on('data', (d) => { stderr += d.toString() })
-        child.on('error', reject)
-        child.on('close', (code) => resolve({ stdout, stderr, code: code ?? -1 }))
-        if (opts.stdin !== undefined) {
-          child.stdin.end(opts.stdin)
-        }
-      })
+  // 1. Resolve current branch state
+  const branchState = await getBranchState(repo, branch, headers)
 
-    let cloneOk = false
-    {
-      const r = await exec(
-        ['clone', '--depth=1', '--single-branch', `--branch=${config.githubBranch}`, cloneUrl, '.'],
-        { cwd: workDir },
-      )
-      cloneOk = r.code === 0
-      if (!cloneOk && !/(Remote branch .* not found|empty repository)/i.test(r.stderr)) {
-        throw new Error(`git clone failed (${r.code}): ${trimGitOutput(r.stderr)}`)
+  // 2. Create blobs for every file
+  const treeEntries: TreeEntry[] = await Promise.all(
+    files.map(async (f) => {
+      const sha = await createBlob(repo, f, headers)
+      return {
+        path: f.key,
+        mode: '100644' as const,
+        type: 'blob' as const,
+        sha,
       }
-    }
+    }),
+  )
 
-    if (!cloneOk) {
-      const init = await exec(['init', '-b', config.githubBranch], { cwd: workDir })
-      if (init.code !== 0) throw new Error(`git init failed: ${trimGitOutput(init.stderr)}`)
-      const remote = await exec(['remote', 'add', 'origin', cloneUrl])
-      if (remote.code !== 0) throw new Error(`git remote add failed: ${trimGitOutput(remote.stderr)}`)
-    }
+  // 3. Create a brand-new root tree (no base_tree — wipes previous content)
+  const treeSha = await createTree(repo, treeEntries, headers)
 
-    await exec(['config', 'user.name', authorName])
-    await exec(['config', 'user.email', authorEmail])
+  // 4. Create the commit
+  const message =
+    `Static export — ${files.length} file${files.length === 1 ? '' : 's'} — ` +
+    new Date().toISOString()
 
-    // Wipe non-.git contents so deletions reflect in the commit.
-    for (const entry of await fs.readdir(workDir)) {
-      if (entry === '.git') continue
-      await fs.rm(path.join(workDir, entry), { recursive: true, force: true })
-    }
+  const author = { name: authorName, email: authorEmail, date: new Date().toISOString() }
+  const parents = branchState.commitSha ? [branchState.commitSha] : []
+  const commitSha = await createCommit(repo, message, treeSha, parents, author, headers)
 
-    for (const f of files) {
-      const target = path.join(workDir, f.key)
-      await fs.mkdir(path.dirname(target), { recursive: true })
-      const body = typeof f.body === 'string' ? Buffer.from(f.body, 'utf-8') : f.body
-      await fs.writeFile(target, body)
-    }
+  // 5. Update or create the branch ref
+  if (branchState.exists) {
+    await updateRef(repo, branch, commitSha, headers)
+  } else {
+    await createRef(repo, branch, commitSha, headers)
+  }
 
-    const add = await exec(['add', '-A'])
-    if (add.code !== 0) throw new Error(`git add failed: ${trimGitOutput(add.stderr)}`)
+  return files.length
+}
 
-    // Skip empty commits so the deploy repo doesn't collect no-op commits.
-    const status = await exec(['status', '--porcelain'])
-    if (status.code === 0 && status.stdout.trim().length === 0) {
-      return 0
-    }
+// ---------------------------------------------------------------------------
+// Branch state
+// ---------------------------------------------------------------------------
 
-    const message = `Static export — ${files.length} file${files.length === 1 ? '' : 's'} — ${new Date().toISOString()}`
-    const commit = await exec(['commit', '-m', message])
-    if (commit.code !== 0) throw new Error(`git commit failed: ${trimGitOutput(commit.stderr)}`)
+interface BranchState {
+  exists: boolean
+  commitSha: string | null
+}
 
-    const push = await exec(['push', '-u', 'origin', config.githubBranch])
-    if (push.code !== 0) throw new Error(`git push failed: ${trimGitOutput(push.stderr)}`)
+async function getBranchState(
+  repo: string,
+  branch: string,
+  headers: HeadersInit,
+): Promise<BranchState> {
+  const res = await fetch(`${GITHUB_API}/repos/${repo}/git/ref/heads/${branch}`, {
+    headers,
+  })
 
-    return files.length
-  } finally {
-    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {})
+  if (res.status === 404) {
+    return { exists: false, commitSha: null }
+  }
+
+  if (!res.ok) {
+    throw apiError('Failed to get branch ref', res)
+  }
+
+  const body = (await res.json()) as { object: { sha: string } }
+  return { exists: true, commitSha: body.object.sha }
+}
+
+// ---------------------------------------------------------------------------
+// Blob creation
+// ---------------------------------------------------------------------------
+
+async function createBlob(
+  repo: string,
+  file: OutputFile,
+  headers: HeadersInit,
+): Promise<string> {
+  const isBuffer = Buffer.isBuffer(file.body)
+  const payload = isBuffer
+    ? { content: (file.body as Buffer).toString('base64'), encoding: 'base64' }
+    : { content: file.body as string, encoding: 'utf-8' }
+
+  const res = await fetch(`${GITHUB_API}/repos/${repo}/git/blobs`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
+
+  if (!res.ok) {
+    throw apiError(`Failed to create blob for "${file.key}"`, res)
+  }
+
+  const body = (await res.json()) as { sha: string }
+  return body.sha
+}
+
+// ---------------------------------------------------------------------------
+// Tree creation
+// ---------------------------------------------------------------------------
+
+interface TreeEntry {
+  path: string
+  mode: '100644'
+  type: 'blob'
+  sha: string
+}
+
+async function createTree(
+  repo: string,
+  tree: TreeEntry[],
+  headers: HeadersInit,
+): Promise<string> {
+  const res = await fetch(`${GITHUB_API}/repos/${repo}/git/trees`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ tree }),
+  })
+
+  if (!res.ok) {
+    throw apiError('Failed to create tree', res)
+  }
+
+  const body = (await res.json()) as { sha: string }
+  return body.sha
+}
+
+// ---------------------------------------------------------------------------
+// Commit creation
+// ---------------------------------------------------------------------------
+
+interface CommitAuthor {
+  name: string
+  email: string
+  date: string
+}
+
+async function createCommit(
+  repo: string,
+  message: string,
+  treeSha: string,
+  parents: string[],
+  author: CommitAuthor,
+  headers: HeadersInit,
+): Promise<string> {
+  const res = await fetch(`${GITHUB_API}/repos/${repo}/git/commits`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ message, tree: treeSha, parents, author, committer: author }),
+  })
+
+  if (!res.ok) {
+    throw apiError('Failed to create commit', res)
+  }
+
+  const body = (await res.json()) as { sha: string }
+  return body.sha
+}
+
+// ---------------------------------------------------------------------------
+// Ref management
+// ---------------------------------------------------------------------------
+
+async function updateRef(
+  repo: string,
+  branch: string,
+  sha: string,
+  headers: HeadersInit,
+): Promise<void> {
+  const res = await fetch(`${GITHUB_API}/repos/${repo}/git/refs/heads/${branch}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ sha, force: true }),
+  })
+
+  if (!res.ok) {
+    throw apiError('Failed to update branch ref', res)
   }
 }
 
-/** Trim known token leakage from git stderr so it's safe to log. */
-function trimGitOutput(stderr: string): string {
-  return stderr
-    .replace(/x-access-token:[^@\s]+@/g, 'x-access-token:***@')
-    .slice(0, 4096)
+async function createRef(
+  repo: string,
+  branch: string,
+  sha: string,
+  headers: HeadersInit,
+): Promise<void> {
+  const res = await fetch(`${GITHUB_API}/repos/${repo}/git/refs`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+  })
+
+  if (!res.ok) {
+    throw apiError('Failed to create branch ref', res)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function apiHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `token ${token}`,
+    Accept: 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  }
+}
+
+async function apiError(context: string, res: Response): Promise<Error> {
+  let detail: string
+  try {
+    const body = (await res.json()) as { message?: string }
+    detail = body.message ?? res.statusText
+  } catch {
+    detail = res.statusText
+  }
+  return new Error(`${context}: ${res.status} ${detail}`)
 }
