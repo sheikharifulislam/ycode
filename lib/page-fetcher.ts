@@ -1517,8 +1517,9 @@ function resolveRichTextVariables(
     const isBlockNode = (n: any) =>
       n?.type === 'paragraph' || n?.type === 'heading' ||
       n?.type === 'bulletList' || n?.type === 'orderedList' ||
-      n?.type === 'richTextComponent' || n?.type === 'richTextImage' ||
-      n?.type === 'table' || n?.type === 'richTextHtmlEmbed' || n?.type === 'horizontalRule';
+      n?.type === 'blockquote' || n?.type === 'richTextComponent' ||
+      n?.type === 'richTextImage' || n?.type === 'table' ||
+      n?.type === 'richTextHtmlEmbed' || n?.type === 'horizontalRule';
     const hasBlockChildren = result.content.some(isBlockNode);
     if (hasBlockChildren) {
       const lifted: any[] = [];
@@ -2361,6 +2362,7 @@ export async function resolveCollectionLayers(
                 pageCollectionCounts: {},
                 currentItemId: item.id,
                 pageCollectionItemId: pageCollectionItemId ?? parentCollectionItemId,
+                timezone,
               })
             );
           }
@@ -2825,7 +2827,7 @@ export async function resolveCollectionLayers(
   // Third pass: Filter layers by conditional visibility
   // We need to compute collection counts first, then filter
   // parentItemValues is the page collection data for dynamic pages
-  const filteredResult = filterByVisibility(resultWithPagination, undefined, parentItemValues, pageCollectionItemId ?? parentCollectionItemId);
+  const filteredResult = filterByVisibility(resultWithPagination, undefined, parentItemValues, pageCollectionItemId ?? parentCollectionItemId, timezone);
 
   return filteredResult;
 }
@@ -2922,6 +2924,7 @@ function filterByVisibility(
   collectionLayerData?: Record<string, string>,
   pageCollectionData?: Record<string, string> | null,
   pageCollectionItemId?: string | null,
+  timezone: string = 'UTC',
 ): Layer[] {
   const pageCollectionCounts = computeCollectionCounts(layers);
   const filterableCollectionIds = findFilterableCollectionIds(layers);
@@ -2942,6 +2945,7 @@ function filterByVisibility(
         pageCollectionCounts,
         currentItemId: effectiveCurrentItemId,
         pageCollectionItemId,
+        timezone,
       });
       const filterTarget = getFilterableCollectionTarget(conditionalVisibility, filterableCollectionIds);
       if (filterTarget) {
@@ -2989,6 +2993,7 @@ function filterByVisibility(
           pageCollectionCounts,
           currentItemId: effectiveCurrentItemId,
           pageCollectionItemId,
+          timezone,
         };
         const groups = conditionalVisibility.groups.map(group => ({
           conditions: (group.conditions || []).map((condition): DynamicVisibilityCondition => {
@@ -3004,6 +3009,7 @@ function filterByVisibility(
                 operator: condition.operator,
                 value: String(condition.value ?? ''),
                 fieldValue: String(v ?? ''),
+                dateOnly: condition.fieldType === 'date_only',
               };
             }
             return {
@@ -3018,7 +3024,7 @@ function filterByVisibility(
             ...(layer._dynamicStyles || {}),
             display: isVisible ? '' : 'none',
           },
-          _dynamicVisibilityRule: { groups },
+          _dynamicVisibilityRule: { timezone, groups },
           children: layer.children
             ? layer.children
               .map(child => filterLayer(child, effectiveCollectionLayerData, effectiveCurrentItemId))
@@ -3404,7 +3410,7 @@ export async function renderCollectionItemsToHtml(
       }
 
       // Apply conditional visibility based on this item's field values
-      resolvedLayers = filterByVisibility(resolvedLayers, item.values, undefined, pageLinkContext?.pageCollectionItemId);
+      resolvedLayers = filterByVisibility(resolvedLayers, item.values, undefined, pageLinkContext?.pageCollectionItemId, htmlTimezone);
 
       // Preferred path: rebuild a full clone of the collection layer just
       // like SSR does (link/action/attributes preserved). Renders one HTML
@@ -3468,6 +3474,14 @@ async function injectCollectionDataForHtml(
   rawItemValues?: Record<string, string>,
   timezone: string = 'UTC'
 ): Promise<Layer> {
+  // Nested collection layers are resolved separately by resolveCollectionLayers,
+  // which clones them per referenced item and injects each item's own values.
+  // Injecting here with the parent item's values would resolve their inner
+  // variables against the wrong context and clobber them (emptying nested fields).
+  if (layer.variables?.collection?.id) {
+    return layer;
+  }
+
   // Reference fields are resolved once per item by the caller
   // (renderCollectionItemsToHtml). Re-resolving on every recursive
   // child would cause redundant Supabase queries.

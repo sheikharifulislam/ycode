@@ -75,15 +75,19 @@ export function renderRootLayoutHeadCode(html: string, prefix = 'global-head'): 
     const pairedTag = match[3]?.toLowerCase();
     const pairedAttrStr = match[4] || '';
 
+    // Third-party scripts (AdSense, GTM, etc.) mutate their own head tags at
+    // runtime (e.g. adding `data-checked-head`), so the live DOM diverges from
+    // the SSR markup. suppressHydrationWarning silences these expected diffs.
     if (voidTag) {
       const attrs = toReactAttrs(parseAttributes(voidAttrStr.trim()));
-      elements.push(React.createElement(voidTag, { key: `${prefix}-${idx++}`, ...attrs }));
+      elements.push(React.createElement(voidTag, { key: `${prefix}-${idx++}`, suppressHydrationWarning: true, ...attrs }));
     } else if (pairedTag === 'script') {
       const attrs = parseAttributes(pairedAttrStr.trim());
       const inner = extractInnerHtml(match[0], 'script');
       const reactAttrs = toReactAttrs(attrs);
       const props: Record<string, unknown> = {
         key: `${prefix}-${idx++}`,
+        suppressHydrationWarning: true,
         ...reactAttrs,
       };
       if (inner) {
@@ -96,19 +100,21 @@ export function renderRootLayoutHeadCode(html: string, prefix = 'global-head'): 
       elements.push(
         React.createElement('style', {
           key: `${prefix}-${idx++}`,
+          suppressHydrationWarning: true,
           ...attrs,
           dangerouslySetInnerHTML: { __html: inner },
         }),
       );
     } else if (pairedTag === 'title') {
       const inner = extractInnerHtml(match[0], 'title');
-      elements.push(React.createElement('title', { key: `${prefix}-${idx++}` }, inner));
+      elements.push(React.createElement('title', { key: `${prefix}-${idx++}`, suppressHydrationWarning: true }, inner));
     } else if (pairedTag) {
       const attrs = toReactAttrs(parseAttributes(pairedAttrStr.trim()));
       const inner = extractInnerHtml(match[0], pairedTag);
       elements.push(
         React.createElement(pairedTag, {
           key: `${prefix}-${idx++}`,
+          suppressHydrationWarning: true,
           ...attrs,
           dangerouslySetInnerHTML: { __html: inner },
         }),

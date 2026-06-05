@@ -19,6 +19,13 @@ export const SUPABASE_QUERY_LIMIT = 1000;
 export const SUPABASE_WRITE_BATCH_SIZE = 100;
 
 /**
+ * Max number of IDs per `.in()` filter on a SELECT.
+ * Large lists overflow the request URL length limit and return 400 Bad Request,
+ * so callers must chunk and merge results.
+ */
+export const SUPABASE_IN_FILTER_CHUNK_SIZE = 100;
+
+/**
  * Page through a Supabase SELECT past the 1000-row default cap.
  * `buildPage(from, to)` must return a fresh query each call (Supabase
  * builders aren't reusable). Stops on error or short page.

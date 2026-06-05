@@ -938,8 +938,8 @@ function LayerContextMenuInner({
           </ContextMenuItem>
         )}
 
-        {/* Development only: Show JSON */}
-        {process.env.NODE_ENV === 'development' && (
+        {/* Developer tools: dev build or when NEXT_PUBLIC_DEVELOPER_MODE=true */}
+        {(process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEVELOPER_MODE === 'true') && (
           <>
             <ContextMenuSeparator />
 

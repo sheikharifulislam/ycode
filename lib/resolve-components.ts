@@ -182,6 +182,26 @@ function remapVariableCollectionLayerIds(vars: LayerVariables, idMap: Map<string
     if (designChanged) { result.design = newDesign; changed = true; }
   }
 
+  // Conditional visibility conditions targeting a collection by layer ID
+  // (e.g. empty-state "has no items" rules inside a component instance)
+  if (vars.conditionalVisibility?.groups?.length) {
+    const groups = vars.conditionalVisibility.groups;
+    const newGroups = groups.map((group) => {
+      if (!Array.isArray(group?.conditions)) return group;
+      const newConditions = group.conditions.map((cond) => {
+        const mapped = cond?.collectionLayerId ? idMap.get(cond.collectionLayerId) : undefined;
+        return mapped && mapped !== cond.collectionLayerId ? { ...cond, collectionLayerId: mapped } : cond;
+      });
+      return newConditions.some((c, i) => c !== group.conditions[i])
+        ? { ...group, conditions: newConditions }
+        : group;
+    });
+    if (newGroups.some((g, i) => g !== groups[i])) {
+      result.conditionalVisibility = { ...vars.conditionalVisibility, groups: newGroups };
+      changed = true;
+    }
+  }
+
   return changed ? result : vars;
 }
 

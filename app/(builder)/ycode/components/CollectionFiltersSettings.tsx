@@ -51,6 +51,7 @@ import {
   isDateFieldType,
   SELF_OPERATORS,
 } from '@/lib/collection-field-utils';
+import { clampDateInputValue } from '@/lib/date-format-utils';
 import { getCollectionVariable, isInputInsideFilter, resolveFilterInputId, findLayerById } from '@/lib/layer-utils';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { usePagesStore } from '@/stores/usePagesStore';
@@ -420,11 +421,17 @@ export default function CollectionFiltersSettings({
 
   const handleOperatorChange = (groupId: string, conditionId: string, operator: VisibilityOperator) => {
     const needsSecondValue = operatorRequiresSecondValue(operator);
+    const existing = groups.find(g => g.id === groupId)?.conditions.find(c => c.id === conditionId);
+    // `is between` has no preset options, so drop a stale preset value carried
+    // over from a single-bound operator.
+    const value = operatorRequiresValue(operator)
+      ? (needsSecondValue && isDatePreset(existing?.value) ? '' : existing?.value)
+      : undefined;
     patchCondition(groupId, conditionId, {
       operator,
-      value: operatorRequiresValue(operator) ? groups.find(g => g.id === groupId)?.conditions.find(c => c.id === conditionId)?.value : undefined,
-      value2: needsSecondValue ? groups.find(g => g.id === groupId)?.conditions.find(c => c.id === conditionId)?.value2 : undefined,
-      inputLayerId2: needsSecondValue ? groups.find(g => g.id === groupId)?.conditions.find(c => c.id === conditionId)?.inputLayerId2 : undefined,
+      value,
+      value2: needsSecondValue ? existing?.value2 : undefined,
+      inputLayerId2: needsSecondValue ? existing?.inputLayerId2 : undefined,
     });
   };
 
@@ -609,6 +616,14 @@ export default function CollectionFiltersSettings({
     const icon = getFieldIcon(fieldType);
     const displayName = getFieldName(condition.fieldId || '');
     const referenceCollectionId = getReferenceCollectionId(condition);
+    // Date fields use a dropdown for value mode; the "Filter form input" option
+    // is the only place that reveals the link-to-input target icon. Falls back
+    // to a linked input for conditions saved before `dateInput` existed.
+    const isDateInputMode = isDateFieldType(fieldType)
+      && (condition.dateInput === true || !!condition.inputLayerId);
+    // Same mode tracking for the second bound (`is_between`).
+    const isDateInputMode2 = isDateFieldType(fieldType)
+      && (condition.dateInput2 === true || !!condition.inputLayerId2);
 
     return (
       <React.Fragment key={condition.id}>
@@ -773,12 +788,14 @@ export default function CollectionFiltersSettings({
                     ) : isDateFieldType(fieldType) ? (
                       <div className="flex flex-col gap-1.5">
                         <Select
-                          value={isDatePreset(condition.value) ? condition.value : (condition.value ? '_custom' : '')}
+                          value={isDatePreset(condition.value) ? condition.value : (isDateInputMode ? '_input' : '_custom')}
                           onValueChange={(v) => {
-                            if (v === '_custom') {
-                              handleValueChange(group.id, condition.id, '');
+                            if (v === '_input') {
+                              patchCondition(group.id, condition.id, { dateInput: true, value: '' });
+                            } else if (v === '_custom') {
+                              patchCondition(group.id, condition.id, { dateInput: false, value: '' });
                             } else {
-                              handleValueChange(group.id, condition.id, v);
+                              patchCondition(group.id, condition.id, { dateInput: false, value: v });
                             }
                           }}
                         >
@@ -787,18 +804,21 @@ export default function CollectionFiltersSettings({
                           </SelectTrigger>
                           <SelectContent>
                             <SelectGroup>
-                              {DATE_PRESET_OPTIONS.map((opt) => (
+                              <SelectItem value="_custom">Custom date</SelectItem>
+                              {/* Presets resolve to a single day/range, so they only
+                                  apply to single-bound operators — not `is between`. */}
+                              {!operatorRequiresSecondValue(condition.operator) && DATE_PRESET_OPTIONS.map((opt) => (
                                 <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                               ))}
-                              <SelectItem value="_custom">Custom date...</SelectItem>
+                              <SelectItem value="_input">Filter form input</SelectItem>
                             </SelectGroup>
                           </SelectContent>
                         </Select>
-                        {!isDatePreset(condition.value) && (
+                        {!isDatePreset(condition.value) && !isDateInputMode && (
                           <Input
                             type="date"
                             value={condition.value || ''}
-                            onChange={(e) => handleValueChange(group.id, condition.id, e.target.value)}
+                            onChange={(e) => patchCondition(group.id, condition.id, { value: clampDateInputValue(e.target.value) })}
                           />
                         )}
                       </div>
@@ -817,72 +837,101 @@ export default function CollectionFiltersSettings({
                       />
                     )}
                   </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="secondary"
-                        onClick={(e) => {
-                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                          handlePickInputForCondition(group.id, condition.id, {
-                            x: rect.left + rect.width / 2,
-                            y: rect.top + rect.height / 2,
-                          });
-                        }}
-                      >
-                        <Icon name="crosshair" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Link to filter input</TooltipContent>
-                  </Tooltip>
+                  {(!isDateFieldType(fieldType) || isDateInputMode) && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          onClick={(e) => {
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            handlePickInputForCondition(group.id, condition.id, {
+                              x: rect.left + rect.width / 2,
+                              y: rect.top + rect.height / 2,
+                            });
+                          }}
+                        >
+                          <Icon name="crosshair" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Link to filter input</TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
               )}
 
-              {/* Second value for date between */}
+              {/* Second value for date between — mirrors the primary date UI:
+                  a Custom date / Filter form input select, with the date input
+                  (custom) or the link-to-input target icon (input mode). */}
               {operatorRequiresSecondValue(condition.operator) && (
                 <>
                   <Label variant="muted" className="text-[10px] text-center">and</Label>
                   {condition.inputLayerId2 ? (
-                    <div className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs">
-                      <Icon name="filter" className="size-3 text-muted-foreground shrink-0" />
-                      <span className="truncate text-foreground">{getLinkedInputName(condition.inputLayerId2)}</span>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
-                            onClick={() => handleUnlinkSecondInput(group.id, condition.id)}
-                          >
-                            <Icon name="unlink" className="size-3" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>Unlink second filter input</TooltipContent>
-                      </Tooltip>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        value={getLinkedInputName(condition.inputLayerId2)}
+                        disabled
+                      />
+                      <div className="shrink-0">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="secondary" onClick={() => handleUnlinkSecondInput(group.id, condition.id)}>
+                              <Icon name="x" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Unlink second filter input</TooltipContent>
+                        </Tooltip>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1">
-                      <div className="flex-1">
-                        <Input
-                          type="date"
-                          value={condition.value2 || ''}
-                          onChange={(e) => handleValue2Change(group.id, condition.id, e.target.value)}
-                        />
+                      <div className="flex-1 flex flex-col gap-1.5">
+                        <Select
+                          value={isDateInputMode2 ? '_input' : '_custom'}
+                          onValueChange={(v) => {
+                            if (v === '_input') {
+                              patchCondition(group.id, condition.id, { dateInput2: true, value2: '' });
+                            } else {
+                              patchCondition(group.id, condition.id, { dateInput2: false, value2: '' });
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="_custom">Custom date</SelectItem>
+                              <SelectItem value="_input">Filter form input</SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        {!isDateInputMode2 && (
+                          <Input
+                            type="date"
+                            value={condition.value2 || ''}
+                            onChange={(e) => patchCondition(group.id, condition.id, { value2: clampDateInputValue(e.target.value) })}
+                          />
+                        )}
                       </div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="secondary"
-                            onClick={(e) => {
-                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                              handlePickSecondInputForCondition(group.id, condition.id, {
-                                x: rect.left + rect.width / 2,
-                                y: rect.top + rect.height / 2,
-                              });
-                            }}
-                          >
-                            <Icon name="crosshair" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Link second filter input</TooltipContent>
-                      </Tooltip>
+                      {isDateInputMode2 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="secondary"
+                              onClick={(e) => {
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                handlePickSecondInputForCondition(group.id, condition.id, {
+                                  x: rect.left + rect.width / 2,
+                                  y: rect.top + rect.height / 2,
+                                });
+                              }}
+                            >
+                              <Icon name="crosshair" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Link second filter input</TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
                   )}
                 </>

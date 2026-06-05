@@ -1,7 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabase-server';
-import { SUPABASE_QUERY_LIMIT, SUPABASE_WRITE_BATCH_SIZE } from '@/lib/supabase-constants';
+import { SUPABASE_IN_FILTER_CHUNK_SIZE, SUPABASE_QUERY_LIMIT, SUPABASE_WRITE_BATCH_SIZE } from '@/lib/supabase-constants';
 import { STORAGE_BUCKET, STORAGE_FOLDERS } from '@/lib/asset-constants';
 import { cleanupOrphanedStorageFiles } from '@/lib/storage-utils';
+import { chunk } from '@/lib/utils';
 import { generateAssetContentHash } from '../hash-utils';
 import type { Asset } from '../../types';
 
@@ -236,8 +237,8 @@ export async function getAssetForProxy(id: string): Promise<Pick<Asset, 'id' | '
  * Returns a map of asset ID to asset for quick lookup
  * @param isPublished If true, get published versions; if false, get draft versions (default: false)
  */
-export async function getAssetsByIds(ids: string[], isPublished: boolean = false): Promise<Record<string, Asset>> {
-  const client = await getSupabaseAdmin();
+export async function getAssetsByIds(ids: string[], isPublished: boolean = false, tenantId?: string): Promise<Record<string, Asset>> {
+  const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase not configured');
@@ -247,28 +248,38 @@ export async function getAssetsByIds(ids: string[], isPublished: boolean = false
     return {};
   }
 
-  let query = client
-    .from('assets')
-    .select('*')
-    .eq('is_published', isPublished)
-    .in('id', ids);
+  // Chunk the ID list: a single large `.in()` overflows the request URL length
+  // limit and returns 400 Bad Request. Fetch chunks in parallel and merge.
+  const results = await Promise.all(
+    chunk(ids, SUPABASE_IN_FILTER_CHUNK_SIZE).map(async (idsChunk) => {
+      let query = client
+        .from('assets')
+        .select('*')
+        .eq('is_published', isPublished)
+        .in('id', idsChunk);
 
-  // Only filter deleted_at for drafts
-  if (!isPublished) {
-    query = query.is('deleted_at', null);
-  }
+      // Only filter deleted_at for drafts
+      if (!isPublished) {
+        query = query.is('deleted_at', null);
+      }
 
-  const { data, error } = await query;
+      const { data, error } = await query;
 
-  if (error) {
-    throw new Error(`Failed to fetch assets: ${error.message}`);
-  }
+      if (error) {
+        throw new Error(`Failed to fetch assets: ${error.message}`);
+      }
 
-  // Convert array to map for O(1) lookup
+      return data ?? [];
+    }),
+  );
+
+  // Convert to map for O(1) lookup
   const assetMap: Record<string, Asset> = {};
-  data?.forEach(asset => {
-    assetMap[asset.id] = asset;
-  });
+  for (const assets of results) {
+    for (const asset of assets) {
+      assetMap[asset.id] = asset;
+    }
+  }
 
   return assetMap;
 }

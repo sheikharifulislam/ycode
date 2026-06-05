@@ -1310,7 +1310,27 @@ const LayerItemImpl: React.FC<{
   const fetchLayerData = useCollectionLayerStore((state) => state.fetchLayerData);
   const fieldsByCollectionId = useCollectionsStore((state) => state.fields);
   const itemsByCollectionId = useCollectionsStore((state) => state.items);
+  const referencedItemsByCollectionId = useCollectionLayerStore((state) => state.referencedItems);
   const allCollectionItems = React.useMemo(() => layerData || [], [layerData]);
+
+  // Reference resolution needs the referenced rows in scope. The global CMS
+  // store only preloads a slice of each collection, so merge in the larger
+  // referenced-items batch (loaded by CenterCanvas) to cover references that
+  // point to rows beyond that slice.
+  const itemsForReferenceResolution = React.useMemo(() => {
+    const refMap = referencedItemsByCollectionId;
+    if (!refMap || Object.keys(refMap).length === 0) return itemsByCollectionId;
+    const merged: Record<string, CollectionItemWithValues[]> = { ...itemsByCollectionId };
+    for (const [collectionId, refItems] of Object.entries(refMap)) {
+      if (!refItems || refItems.length === 0) continue;
+      const byId = new Map((merged[collectionId] || []).map((item) => [item.id, item]));
+      for (const item of refItems) {
+        if (!byId.has(item.id)) byId.set(item.id, item);
+      }
+      merged[collectionId] = Array.from(byId.values());
+    }
+    return merged;
+  }, [itemsByCollectionId, referencedItemsByCollectionId]);
 
   // Get the source for multi-asset field resolution
   const sourceFieldSource = collectionVariable?.source_field_source;
@@ -1418,6 +1438,7 @@ const LayerItemImpl: React.FC<{
             pageCollectionCounts: {},
             currentItemId: item.id,
             pageCollectionItemId,
+            timezone,
           })
         );
       }
@@ -1445,7 +1466,7 @@ const LayerItemImpl: React.FC<{
     }
 
     return items;
-  }, [collectionId, allCollectionItems, sourceFieldId, sourceFieldType, sourceFieldSource, collectionLayerData, pageCollectionItemData, collectionLayerItemId, pageCollectionItemId, getAsset, collectionVariable?.filters, collectionVariable?.limit, collectionVariable?.offset, collectionVariable?.pagination, isEditMode]);
+  }, [collectionId, allCollectionItems, sourceFieldId, sourceFieldType, sourceFieldSource, collectionLayerData, pageCollectionItemData, collectionLayerItemId, pageCollectionItemId, getAsset, collectionVariable?.filters, collectionVariable?.limit, collectionVariable?.offset, collectionVariable?.pagination, isEditMode, timezone]);
 
   const optionsSourceSort = layer.settings?.optionsSource;
 
@@ -1793,27 +1814,26 @@ const LayerItemImpl: React.FC<{
     return null;
   }
 
-  // Evaluate conditional visibility (only in edit mode - SSR handles published pages)
+  // Evaluate conditional visibility on canvas (SSR handles published pages).
+  // Collection count-based conditions (`page_collection`: has_items / has_no_items
+  // / item_count) depend on runtime/published data, so on canvas we always render
+  // those blocks — e.g. empty states — to keep them selectable and styleable.
   const conditionalVisibility = layer.variables?.conditionalVisibility;
   if (isEditMode && conditionalVisibility && conditionalVisibility.groups?.length > 0) {
-    // Build page collection counts from the store
-    const pageCollectionCounts: Record<string, number> = {};
-    conditionalVisibility.groups.forEach(group => {
-      group.conditions?.forEach(condition => {
-        if (condition.source === 'page_collection' && condition.collectionLayerId) {
-          // Use the layerData from the store for collection counts
-          const storeData = useCollectionLayerStore.getState().layerData[condition.collectionLayerId];
-          pageCollectionCounts[condition.collectionLayerId] = storeData?.length ?? 0;
-        }
-      });
-    });
+    const canvasVisibility = {
+      groups: conditionalVisibility.groups.map(group => ({
+        ...group,
+        conditions: group.conditions?.filter(c => c.source !== 'page_collection') ?? [],
+      })),
+    };
 
-    const isVisible = evaluateVisibility(conditionalVisibility, {
+    const isVisible = evaluateVisibility(canvasVisibility, {
       collectionLayerData,
       pageCollectionData: pageCollectionItemData,
-      pageCollectionCounts,
+      pageCollectionCounts: {},
       currentItemId: collectionLayerItemId,
       pageCollectionItemId,
+      timezone,
     });
     if (!isVisible) {
       return null;
@@ -3127,7 +3147,7 @@ const LayerItemImpl: React.FC<{
               ? resolveReferenceFieldsSync(
                 translatedItemValues,
                 collectionFields,
-                itemsByCollectionId,
+                itemsForReferenceResolution,
                 fieldsByCollectionId
               )
               : translatedItemValues;

@@ -263,6 +263,22 @@ export function isValidUUID(str: string): boolean {
 }
 
 /**
+ * Split an array into chunks of a given size.
+ * Useful for batching `.in()` queries to stay under request URL length limits.
+ * @param items - The array to split
+ * @param size - Max items per chunk (must be > 0)
+ * @returns Array of chunks preserving order
+ */
+export function chunk<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+/**
  * Generate a unique ID with optional prefix
  * @param prefix - Optional 3 letter prefix to prepend (e.g., 'lyr' for 'layer')
  * @returns Unique ID string (e.g., "lyr-mip1xm2qt9vvh")

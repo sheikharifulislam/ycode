@@ -10,7 +10,7 @@
 
 import type { AssetVariable, FieldVariable, DynamicTextVariable, DynamicRichTextVariable, StaticTextVariable, ComponentVariableValue, Layer } from '@/types';
 import { resolveInlineVariablesFromData } from '@/lib/inline-variables';
-import { resolveFieldFromSources } from '@/lib/cms-variables-utils';
+import { buildFieldVariablePath, resolveFieldFromSources } from '@/lib/cms-variables-utils';
 import { DEFAULT_ASSETS } from '@/lib/asset-constants';
 import { buildSvgDataUrl } from '@/lib/asset-utils';
 import { stringToTiptapContent } from '@/lib/text-format-utils';
@@ -315,9 +315,13 @@ export function getImageUrlFromVariable(
     const fieldId = src.data.field_id;
     if (!fieldId) return undefined;
 
+    // Build path with relationships so nested-reference image fields resolve
+    // (e.g. Author reference -> Photo image field).
+    const fieldPath = buildFieldVariablePath(fieldId, src.data.relationships);
+
     // Use source-aware resolution (respects source: 'page' | 'collection')
     const resolvedValue = resolveFieldFromSources(
-      fieldId,
+      fieldPath,
       src.data.source,
       collectionItemData,
       pageCollectionItemData
@@ -395,9 +399,12 @@ export function getVideoUrlFromVariable(
     const fieldId = src.data.field_id;
     if (!fieldId) return undefined;
 
+    // Build path with relationships so nested-reference fields resolve
+    const fieldPath = buildFieldVariablePath(fieldId, src.data.relationships);
+
     // Use source-aware resolution (respects source: 'page' | 'collection')
     const resolvedValue = resolveFieldFromSources(
-      fieldId,
+      fieldPath,
       src.data.source,
       collectionItemData,
       pageCollectionItemData

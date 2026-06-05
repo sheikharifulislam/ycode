@@ -78,6 +78,20 @@ export function formatFieldValue(
  * @param collectionLayerId - Optional specific collection layer ID (for layer-specific resolution)
  * @param layerDataMap - Optional map of layer ID → item data (for layer-specific resolution)
  */
+/**
+ * Builds the lookup key for a field variable, joining the root field id with its
+ * relationship chain (e.g. "authorRefId.photoFieldId" for nested references).
+ * Matches the enhanced-value keys produced by resolveReferenceFieldsSync.
+ */
+export function buildFieldVariablePath(
+  fieldId: string,
+  relationships?: string[] | null
+): string {
+  return relationships && relationships.length > 0
+    ? [fieldId, ...relationships].join('.')
+    : fieldId;
+}
+
 export function resolveFieldFromSources(
   fieldId: string,
   source: string | undefined,

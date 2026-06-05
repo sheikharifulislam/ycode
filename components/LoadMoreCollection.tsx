@@ -99,10 +99,21 @@ export default function LoadMoreCollection({
       if (html && parent) {
         const temp = document.createElement('div');
         temp.innerHTML = html;
+        // When the pagination controls live inside the same parent as the items
+        // (e.g. as the last grid cell), insert new items before the controls so
+        // the "load more" button stays at the end. Falls back to appending when
+        // the controls are an outside sibling (the common case).
+        const paginationControls = parent.querySelector(
+          `:scope > [data-pagination-for="${collectionLayerId}"]`
+        );
         while (temp.firstChild) {
           const child = temp.firstChild;
           if (child instanceof Element) child.setAttribute(LOAD_MORE_APPENDED_ATTR, '');
-          parent.appendChild(child);
+          if (paginationControls) {
+            parent.insertBefore(child, paginationControls);
+          } else {
+            parent.appendChild(child);
+          }
         }
         if (newItemIds.length > 0) {
           const detail: ItemsInjectedDetail = {
