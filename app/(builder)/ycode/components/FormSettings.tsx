@@ -178,7 +178,7 @@ export default function FormSettings({ layer, onLayerUpdate }: FormSettingsProps
       isOpen={isOpen}
       onToggle={() => setIsOpen(!isOpen)}
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2.5">
         {/* Success Action Toggle */}
         <div className="grid grid-cols-3">
           <Label variant="muted">Success</Label>

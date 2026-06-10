@@ -2692,7 +2692,8 @@ export async function resolveCollectionLayers(
         };
 
         const generatedOptions: Layer[] = sourceItems.map(item => {
-          const label = displayField ? (item.values[displayField.id] || 'Untitled') : 'Untitled';
+          const translatedValues = applyCmsTranslations(item.id, item.values, sourceFields, translations, { includeIncomplete: !isPublished });
+          const label = displayField ? (translatedValues[displayField.id] || 'Untitled') : 'Untitled';
           return {
             id: `${layer.id}-opt-${item.id}`,
             name: 'option',
@@ -2762,7 +2763,8 @@ export async function resolveCollectionLayers(
       const { type: _t, name: _n, value: _v, checked: _c, ...inheritedInputAttrs } = templateInput?.attributes || {};
 
       const generatedChildren: Layer[] = items.map(item => {
-        const label = displayField ? (item.values[displayField.id] || 'Untitled') : 'Untitled';
+        const translatedValues = applyCmsTranslations(item.id, item.values, fields as CollectionField[], translations, { includeIncomplete: !isPublished });
+        const label = displayField ? (translatedValues[displayField.id] || 'Untitled') : 'Untitled';
         const isDefault = inputType === 'checkbox'
           ? (opts.defaultItemIds || []).includes(item.id)
           : opts.defaultItemId === item.id;

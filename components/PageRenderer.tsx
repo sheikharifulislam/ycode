@@ -86,6 +86,12 @@ function collectLayerPageLinks(layers: Layer[]): PageLinkRef[] {
         }
       }
     }
+    // Form redirect_url: extract page refs so the target item slug is pre-fetched
+    const redirectUrl = layer.settings?.form?.redirect_url;
+    if (redirectUrl?.type === 'page') {
+      const { collection_item_id, id: page_id } = redirectUrl.page ?? {};
+      if (collection_item_id && page_id) results.push({ collection_item_id, page_id });
+    }
     const textVar = layer.variables?.text as any;
     if (textVar?.type === 'dynamic_rich_text' && textVar.data?.content) {
       results.push(...collectTiptapPageLinks(textVar.data.content));

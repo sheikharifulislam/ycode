@@ -18,6 +18,7 @@ import SettingsPanel from './SettingsPanel';
 import RichTextEditor from './RichTextEditor';
 import { filterFieldGroupsByType, flattenFieldGroups, LINK_FIELD_TYPES, buildReferenceItemOptions } from '@/lib/collection-field-utils';
 import { generateLinkHref } from '@/lib/link-utils';
+import { cn } from '@/lib/utils';
 import LinkCollectionItemPicker from './LinkCollectionItemPicker';
 import { FieldSelectDropdown, type FieldGroup, type FieldSourceType } from './CollectionFieldSelector';
 import ComponentVariableLabel, { VARIABLE_TYPE_ICONS } from './ComponentVariableLabel';
@@ -973,7 +974,7 @@ export default function LinkSettings(props: LinkSettingsProps) {
   // Standalone mode: render without SettingsPanel wrapper
   if (isStandaloneMode) {
     return (
-      <div className="flex flex-col">
+      <div className={cn('flex flex-col', !useStackedLayout && 'gap-2.5')}>
         {linkTypeContent}
         {typeSpecificContent}
         {anchorContent}
