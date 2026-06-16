@@ -216,6 +216,7 @@ const LayerRendererPublic: React.FC<LayerRendererPublicProps> = ({
               sortByInputLayerId={layer._filterConfig!.sortByInputLayerId}
               sortOrderInputLayerId={layer._filterConfig!.sortOrderInputLayerId}
               limit={layer._filterConfig!.limit}
+              maxTotal={layer._filterConfig!.maxTotal}
               paginationMode={layer._filterConfig!.paginationMode}
               layerTemplate={layer._filterConfig!.layerTemplate}
               collectionLayerClasses={layer._filterConfig!.collectionLayerClasses}

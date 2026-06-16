@@ -508,6 +508,10 @@ export interface Layer {
     sortByInputLayerId?: string;
     sortOrderInputLayerId?: string;
     limit?: number;
+    // Hard cap on the total (from `collection.limit` with pagination enabled).
+    // Mirrors `CollectionPaginationMeta.maxTotal` so client-side filtering shows
+    // the same clamped count/`hasMore` as SSR instead of the raw filtered total.
+    maxTotal?: number;
     paginationMode?: 'pages' | 'load_more';
     layerTemplate: Layer[];
     collectionLayerClasses?: string[];

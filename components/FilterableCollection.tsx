@@ -16,6 +16,9 @@ interface FilterableCollectionProps {
   sortByInputLayerId?: string;
   sortOrderInputLayerId?: string;
   limit?: number;
+  /** Hard cap on the total — clamps the displayed count and `hasMore` so a
+   * client-side reconcile matches the SSR-capped "Showing X of Y". */
+  maxTotal?: number;
   paginationMode?: 'pages' | 'load_more';
   layerTemplate: Layer[];
   collectionLayerClasses?: string[];
@@ -95,6 +98,7 @@ export default function FilterableCollection({
   sortByInputLayerId,
   sortOrderInputLayerId,
   limit,
+  maxTotal,
   paginationMode,
   layerTemplate,
   collectionLayerClasses,
@@ -740,6 +744,7 @@ export default function FilterableCollection({
         sortOrder: effectiveSortOrder,
         limit,
         offset,
+        maxTotal,
         published: isPublished,
         collectionLayerClasses,
         collectionLayerTag,
@@ -801,7 +806,7 @@ export default function FilterableCollection({
           abortRef.current = null;
         }
       });
-  }, [collectionId, collectionLayerId, layerTemplate, effectiveSortBy, effectiveSortOrder, limit, paginationMode, updateEmptyStateElements, injectFilteredHTML, showLoadingSkeleton, removeLoadingSkeleton, collectionLayerClasses, collectionLayerTag, isPublished, isPreview, pageCollectionItemId, pageCollectionSortedItemIds, collectionLayer]);
+  }, [collectionId, collectionLayerId, layerTemplate, effectiveSortBy, effectiveSortOrder, limit, maxTotal, paginationMode, updateEmptyStateElements, injectFilteredHTML, showLoadingSkeleton, removeLoadingSkeleton, collectionLayerClasses, collectionLayerTag, isPublished, isPreview, pageCollectionItemId, pageCollectionSortedItemIds, collectionLayer]);
 
   const fetchFilteredRef = useRef(fetchFiltered);
   useEffect(() => { fetchFilteredRef.current = fetchFiltered; }, [fetchFiltered]);

@@ -619,6 +619,7 @@ export async function POST(
       sortOrder = 'asc',
       limit,
       offset = 0,
+      maxTotal,
       localeCode,
       collectionLayerClasses,
       collectionLayerTag,
@@ -659,14 +660,26 @@ export async function POST(
       pageCollectionItemId,
     );
 
-    if (matchingIds.length === 0) {
+    const pageOffset = Math.max(0, offset || 0);
+
+    // `maxTotal` (the collection's display limit when pagination is enabled)
+    // caps the total just like SSR, so a client-side reconcile reports the same
+    // "Showing X of Y" and stops load_more/paging at the same boundary instead
+    // of exposing the raw filtered count.
+    const cappedTotal = typeof maxTotal === 'number' && maxTotal > 0
+      ? Math.min(filteredTotal, maxTotal)
+      : filteredTotal;
+
+    if (matchingIds.length === 0 || pageOffset >= cappedTotal) {
       return noCache({
-        data: { html: '', total: 0, count: 0, offset, hasMore: false, itemIds: [] },
+        data: { html: '', total: cappedTotal, count: 0, offset: pageOffset, hasMore: false, itemIds: [] },
       });
     }
 
-    const pageOffset = Math.max(0, offset || 0);
-    const pageLimit = limit && limit > 0 ? limit : filteredTotal;
+    // Never serve items past the cap: shrink the page window to what's left
+    // below `cappedTotal`.
+    const requestedLimit = limit && limit > 0 ? limit : cappedTotal;
+    const pageLimit = Math.min(requestedLimit, cappedTotal - pageOffset);
     let pageRawItems: CollectionItem[] = [];
     let pageItemIds: string[] = [];
 
@@ -726,7 +739,7 @@ export async function POST(
     // render the live number in the filtered HTML.
     await enrichItemsWithCountValues(paginatedItems, collectionId, isPublished);
 
-    const hasMore = pageOffset + paginatedItems.length < filteredTotal;
+    const hasMore = pageOffset + paginatedItems.length < cappedTotal;
 
     const [collectionFields, pages, folders, localeData] = await metadataPromise;
 
@@ -770,7 +783,7 @@ export async function POST(
     return noCache({
       data: {
         html,
-        total: filteredTotal,
+        total: cappedTotal,
         count: paginatedItems.length,
         offset: pageOffset,
         hasMore,
