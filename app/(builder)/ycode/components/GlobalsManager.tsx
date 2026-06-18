@@ -311,13 +311,16 @@ export default function GlobalsManager({ canManageSchema = true, timezone }: Glo
     <div className="flex-1 flex flex-col min-w-0">
       <div className="p-4 flex items-center justify-between border-b">
         <div className="flex items-center gap-2">
-          <Icon name="globe" className="size-4 text-muted-foreground" />
+          <Icon name="globe" className="size-3.5 text-muted-foreground" />
           <span className="font-medium">Global variables</span>
         </div>
         {canManageSchema && (
-          <Button size="sm" onClick={openCreate}>
+          <Button
+            size="sm" variant="secondary"
+            onClick={openCreate}
+          >
             <Icon name="plus" />
-            New global
+            New variable
           </Button>
         )}
       </div>
@@ -391,7 +394,7 @@ export default function GlobalsManager({ canManageSchema = true, timezone }: Glo
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent width="56rem">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit global variable' : 'New global variable'}</DialogTitle>
             <DialogDescription>

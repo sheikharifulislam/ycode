@@ -2076,7 +2076,7 @@ const CMS = React.memo(function CMS() {
   const collectionsSidebar = (
     <div className="w-64 shrink-0 bg-background border-r flex flex-col overflow-hidden px-4">
       {/* Global variables - distinct site-wide section, set apart from collections */}
-      <div className="pt-4 pb-3 shrink-0">
+      <div className="py-4 shrink-0">
         <button
           type="button"
           onClick={() => setCmsSection('globals')}
