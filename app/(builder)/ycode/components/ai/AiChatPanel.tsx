@@ -105,6 +105,7 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
   const sendMessage = useAiChatStore((s) => s.sendMessage);
   const setAutoReview = useAiChatStore((s) => s.setAutoReview);
   const setModel = useAiChatStore((s) => s.setModel);
+  const revertTurn = useAiChatStore((s) => s.revertTurn);
   const stop = useAiChatStore((s) => s.stop);
   const clear = useAiChatStore((s) => s.clear);
   const close = useAiChatStore((s) => s.close);
@@ -359,6 +360,7 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
             <MessageBubble
               key={message.id} message={message}
               isStreaming={isStreaming}
+              onRevert={revertTurn}
             />
           ))
         )}
@@ -573,7 +575,15 @@ function EmptyState({ onPick, disabled }: { onPick: (text: string) => void; disa
   );
 }
 
-function MessageBubble({ message, isStreaming }: { message: ChatMessage; isStreaming: boolean }) {
+function MessageBubble({
+  message,
+  isStreaming,
+  onRevert,
+}: {
+  message: ChatMessage;
+  isStreaming: boolean;
+  onRevert: (messageId: string) => void;
+}) {
   if (message.role === 'user' && message.review) {
     return (
       <div className="self-stretch flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -612,6 +622,19 @@ function MessageBubble({ message, isStreaming }: { message: ChatMessage; isStrea
             {message.text}
           </div>
         )}
+        {message.reverted ? (
+          <span className="text-[10px] text-muted-foreground">Changes reverted</span>
+        ) : message.canRevert ? (
+          <button
+            type="button"
+            onClick={() => onRevert(message.id)}
+            disabled={isStreaming}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            <Icon name="undo" className="size-2.5" />
+            Revert changes
+          </button>
+        ) : null}
       </div>
     );
   }

@@ -6,6 +6,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { useComponentsStore } from '@/stores/useComponentsStore';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { usePagesStore } from '@/stores/usePagesStore';
+import type { Layer } from '@/types';
 
 /** A tool the agent invoked during an assistant turn, shown as a status line. */
 export interface ChatToolCall {
@@ -28,6 +29,10 @@ export interface ChatMessage {
   images?: ChatImage[];
   /** True for the auto-generated visual self-review turn (rendered compactly). */
   review?: boolean;
+  /** True while a pre-turn page snapshot exists and can be restored (not persisted). */
+  canRevert?: boolean;
+  /** True once this turn's changes have been reverted. */
+  reverted?: boolean;
 }
 
 type ChatStatus = 'idle' | 'streaming';
@@ -83,6 +88,7 @@ interface AiChatActions {
   setAutoReview: (value: boolean) => void;
   setModel: (model: string | null) => void;
   sendMessage: (text: string, attachment?: MessageAttachment) => Promise<void>;
+  revertTurn: (messageId: string) => Promise<void>;
 }
 
 type AiChatStore = AiChatState & AiChatActions;
@@ -96,6 +102,13 @@ type RuntimeEvent =
   | { type: 'error'; message: string };
 
 let abortController: AbortController | null = null;
+
+/**
+ * Pre-turn page snapshots, keyed by the user message id, enabling a one-click
+ * revert of a turn's layout changes. Kept in memory only (never persisted) to
+ * avoid bloating storage and because stale snapshots aren't useful after reload.
+ */
+const turnCheckpoints = new Map<string, { pageId: string; layers: Layer[] }>();
 
 /** How many automatic review passes to run after a user turn. */
 const MAX_REVIEW_DEPTH = 1;
@@ -175,6 +188,7 @@ export const useAiChatStore = create<AiChatStore>()(
 
         const isReview = reviewDepth > 0;
         const promptText = trimmed || 'Use the attached image(s) as a reference for what to build.';
+        const editor = useEditorStore.getState();
 
         const userMessage: ChatMessage = {
           id: newId(),
@@ -185,6 +199,19 @@ export const useAiChatStore = create<AiChatStore>()(
           review: isReview || undefined,
         };
         const assistantMessage: ChatMessage = { id: newId(), role: 'assistant', text: '', toolCalls: [] };
+
+        // Snapshot the active page before a real (non-review) turn so the user can
+        // revert this turn's layout changes in one click.
+        if (!isReview && editor.currentPageId) {
+          const snapshot = usePagesStore.getState().draftsByPageId[editor.currentPageId]?.layers;
+          if (snapshot) {
+            turnCheckpoints.set(userMessage.id, {
+              pageId: editor.currentPageId,
+              layers: structuredClone(snapshot),
+            });
+            userMessage.canRevert = true;
+          }
+        }
 
         // History: prior turns as text. Assistant turns that only ran tools still
         // contribute a placeholder so user/assistant roles keep alternating.
@@ -199,7 +226,6 @@ export const useAiChatStore = create<AiChatStore>()(
 
         set((state) => ({ messages: [...state.messages, userMessage, assistantMessage], error: null }));
 
-        const editor = useEditorStore.getState();
         abortController = new AbortController();
         const signal = abortController.signal;
 
@@ -279,7 +305,24 @@ export const useAiChatStore = create<AiChatStore>()(
 
         clear: () => {
           get().stop();
+          turnCheckpoints.clear();
           set({ messages: [], error: null });
+        },
+
+        revertTurn: async (messageId: string) => {
+          const checkpoint = turnCheckpoints.get(messageId);
+          if (!checkpoint || get().status !== 'idle') return;
+
+          const pages = usePagesStore.getState();
+          pages.setDraftLayers(checkpoint.pageId, checkpoint.layers);
+          await pages.saveDraft(checkpoint.pageId);
+
+          turnCheckpoints.delete(messageId);
+          set((state) => ({
+            messages: state.messages.map((message) =>
+              message.id === messageId ? { ...message, canRevert: false, reverted: true } : message,
+            ),
+          }));
         },
 
         stop: () => {
