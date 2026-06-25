@@ -218,6 +218,20 @@
   stroke: currentColor;
 }
 
+/* AI chat composer (TipTap) */
+.ai-chat-composer.ProseMirror {
+  @apply outline-none w-full;
+}
+
+.ai-chat-composer.ProseMirror p {
+  @apply m-0;
+}
+
+.ai-chat-composer.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply text-muted-foreground pointer-events-none float-left h-0;
+}
+
 /* RichTextEditor Styles */
 .rich-text-editor.ProseMirror {
   @apply outline-none w-full min-h-full;

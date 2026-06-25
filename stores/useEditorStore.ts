@@ -189,6 +189,10 @@ interface EditorStoreWithHistory extends EditorState {
   // Canvas context menu state (hides overlay while menu is open)
   isCanvasContextMenuOpen: boolean;
   setCanvasContextMenuOpen: (value: boolean) => void;
+  // AI chat "reference a layer" mode: tints canvas outlines teal and shows a
+  // crosshair cursor while the user picks a layer to mention in the AI composer.
+  isAiLayerPicking: boolean;
+  setAiLayerPicking: (value: boolean) => void;
   // Swiper-calculated snap page counts per slider (used for bullet replication)
   sliderSnapCounts: Record<string, number>;
   setSliderSnapCount: (sliderId: string, count: number) => void;
@@ -281,6 +285,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setLeftSidebarWidth: (value) => set({ leftSidebarWidth: value }),
   isCanvasContextMenuOpen: false,
   setCanvasContextMenuOpen: (value) => set({ isCanvasContextMenuOpen: value }),
+  isAiLayerPicking: false,
+  setAiLayerPicking: (value) => set({ isAiLayerPicking: value }),
   sliderSnapCounts: {},
   setSliderSnapCount: (sliderId, count) => set((state) => {
     // Swiper fires `update` on every DOM mutation inside its wrapper, which

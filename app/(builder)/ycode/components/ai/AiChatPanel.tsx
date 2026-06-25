@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
@@ -10,14 +10,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
 import { Spinner } from '@/components/ui/spinner';
-import { Textarea } from '@/components/ui/textarea';
-import { AGENT_MODELS, DEFAULT_AGENT_MODEL } from '@/lib/agent/models';
 import { getLayerName } from '@/lib/layer-display-utils';
 import { findLayerById } from '@/lib/layer-utils';
 import { cn } from '@/lib/utils';
@@ -29,6 +25,7 @@ import { usePagesStore } from '@/stores/usePagesStore';
 import type { Layer } from '@/types';
 
 import { toolCallLabel } from './ai-tool-labels';
+import ChatComposer from './ChatComposer';
 
 const SUGGESTIONS = [
   'Add a hero section with a headline and a call to action',
@@ -36,28 +33,7 @@ const SUGGESTIONS = [
   'Add a contact form at the bottom of this page',
 ];
 
-const MAX_IMAGES = 4;
-const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const MAX_MENTION_RESULTS = 8;
 const URL_REGEX = /\bhttps?:\/\/[^\s]+/gi;
-
-const MENTION_ICON: Record<Mention['type'], 'page' | 'database' | 'layers'> = {
-  page: 'page',
-  collection: 'database',
-  layer: 'layers',
-};
-
-/** The active "@query" token under the caret, if any. */
-function getActiveMention(text: string, caret: number): { query: string; start: number } | null {
-  const upto = text.slice(0, caret);
-  const at = upto.lastIndexOf('@');
-  if (at === -1) return null;
-  const charBefore = at === 0 ? ' ' : upto[at - 1];
-  if (!/\s/.test(charBefore)) return null;
-  const query = upto.slice(at + 1);
-  if (/\s/.test(query)) return null;
-  return { query, start: at };
-}
 
 function parseUrls(text: string): string[] {
   return Array.from(new Set(text.match(URL_REGEX) ?? [])).map((url) => url.replace(/[.,)]+$/, ''));
@@ -91,28 +67,6 @@ function flattenLayerMentions(layers: Layer[], acc: Mention[] = []): Mention[] {
   return acc;
 }
 
-/** Read an image File into a base64 attachment, or null if it's unsupported. */
-function fileToImageAttachment(file: File): Promise<ImageAttachment | null> {
-  return new Promise((resolve) => {
-    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
-      resolve(null);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
-      const comma = dataUrl.indexOf(',');
-      if (comma === -1) {
-        resolve(null);
-        return;
-      }
-      resolve({ mediaType: file.type, data: dataUrl.slice(comma + 1), dataUrl });
-    };
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(file);
-  });
-}
-
 interface AiChatPanelProps {
   embedded?: boolean;
 }
@@ -144,15 +98,7 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
   const pages = usePagesStore((s) => s.pages);
   const collections = useCollectionsStore((s) => s.collections);
 
-  const [input, setInput] = useState('');
-  const [contextDetached, setContextDetached] = useState(false);
-  const [images, setImages] = useState<ImageAttachment[]>([]);
-  const [mentions, setMentions] = useState<Mention[]>([]);
-  const [mentionState, setMentionState] = useState<{ query: string; start: number } | null>(null);
-  const [mentionIndex, setMentionIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isStreaming = status === 'streaming';
 
@@ -167,14 +113,13 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
     return [...fromPages, ...fromCollections, ...fromLayers];
   }, [pages, collections, draftLayers]);
 
-  const mentionResults = useMemo<Mention[]>(() => {
-    if (mentionState === null) return [];
-    const query = mentionState.query.toLowerCase();
-    return mentionCandidates
-      .filter((candidate) => candidate.label.toLowerCase().includes(query))
-      .slice(0, MAX_MENTION_RESULTS);
-  }, [mentionState, mentionCandidates]);
+  const layerMentions = useMemo<Mention[]>(
+    () => (draftLayers ? flattenLayerMentions(draftLayers) : []),
+    [draftLayers],
+  );
 
+  // The canvas selection is sent to the agent as background context only — it is
+  // not shown as a pill. Explicit pills come from the composer's @ menu / picker.
   const selectedRefs = useMemo<SelectedLayerRef[]>(() => {
     if (!selectedLayerIds.length || !draftLayers) return [];
     return selectedLayerIds
@@ -185,116 +130,19 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
       .filter((ref): ref is SelectedLayerRef => ref !== null);
   }, [selectedLayerIds, draftLayers]);
 
-  // A fresh selection re-attaches context that the user previously dismissed.
-  useEffect(() => {
-    setContextDetached(false);
-  }, [selectedLayerIds]);
-
-  const attachedRefs = contextDetached ? [] : selectedRefs;
-
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, status]);
 
-  const addImageFiles = async (files: FileList | File[]) => {
-    const slots = MAX_IMAGES - images.length;
-    if (slots <= 0) return;
-    const converted = (await Promise.all(Array.from(files).slice(0, slots).map(fileToImageAttachment)))
-      .filter((img): img is ImageAttachment => img !== null);
-    if (converted.length > 0) {
-      setImages((prev) => [...prev, ...converted].slice(0, MAX_IMAGES));
-    }
-  };
-
-  const closeMention = () => setMentionState(null);
-
-  const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = event.target.value;
-    setInput(value);
-    const active = getActiveMention(value, event.target.selectionStart ?? value.length);
-    setMentionState(active);
-    setMentionIndex(0);
-  };
-
-  const insertMention = (candidate: Mention) => {
-    if (mentionState === null) return;
-    const caret = textareaRef.current?.selectionStart ?? input.length;
-    const before = input.slice(0, mentionState.start);
-    const after = input.slice(caret);
-    const token = `@${candidate.label} `;
-    const nextText = before + token + after;
-    setInput(nextText);
-    setMentions((prev) =>
-      prev.some((m) => m.type === candidate.type && m.id === candidate.id) ? prev : [...prev, candidate],
-    );
-    closeMention();
-    requestAnimationFrame(() => {
-      const pos = (before + token).length;
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(pos, pos);
-    });
-  };
-
-  const submit = (text: string) => {
+  const submit = (text: string, mentions: Mention[] = [], images: ImageAttachment[] = []) => {
     if ((!text.trim() && images.length === 0) || isStreaming) return;
-    setInput('');
-    const usedMentions = mentions.filter((mention) => text.includes(`@${mention.label}`));
-    const attachment = {
-      selectedLayers: attachedRefs,
+    void sendMessage(text, {
+      selectedLayers: selectedRefs,
       images,
-      mentions: usedMentions,
+      mentions,
       referenceUrls: parseUrls(text),
-    };
-    setImages([]);
-    setMentions([]);
-    closeMention();
-    void sendMessage(text, attachment);
-  };
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mentionState !== null && mentionResults.length > 0) {
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        setMentionIndex((index) => (index + 1) % mentionResults.length);
-        return;
-      }
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        setMentionIndex((index) => (index - 1 + mentionResults.length) % mentionResults.length);
-        return;
-      }
-      if (event.key === 'Enter' || event.key === 'Tab') {
-        event.preventDefault();
-        insertMention(mentionResults[Math.min(mentionIndex, mentionResults.length - 1)]);
-        return;
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeMention();
-        return;
-      }
-    }
-
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      submit(input);
-    }
-  };
-
-  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const imageFiles = Array.from(event.clipboardData.files).filter((file) =>
-      file.type.startsWith('image/'),
-    );
-    if (imageFiles.length > 0) {
-      event.preventDefault();
-      void addImageFiles(imageFiles);
-    }
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) void addImageFiles(event.target.files);
-    event.target.value = '';
+    });
   };
 
   return (
@@ -383,115 +231,15 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
       </div>
 
       <div className="border-t p-3 shrink-0">
-        {attachedRefs.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 mb-2">
-            {attachedRefs.map((ref) => (
-              <span
-                key={ref.id}
-                className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground max-w-[160px]"
-              >
-                <Icon name="layers" className="size-3 shrink-0" />
-                <span className="truncate">{ref.name}</span>
-              </span>
-            ))}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="size-5 p-0 text-muted-foreground"
-              onClick={() => setContextDetached(true)}
-              aria-label="Remove selection context"
-              title="Remove selection context"
-            >
-              <Icon name="x" className="size-3" />
-            </Button>
-          </div>
-        )}
-        {images.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            {images.map((image, index) => (
-              <div key={image.dataUrl} className="relative size-12 rounded-md overflow-hidden border group">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={image.dataUrl} alt="Attachment"
-                  className="size-full object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={() => setImages((prev) => prev.filter((_, i) => i !== index))}
-                  className="absolute top-0 right-0 bg-background/80 rounded-bl p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-label="Remove image"
-                >
-                  <Icon name="x" className="size-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="relative">
-          {mentionState !== null && mentionResults.length > 0 && (
-            <MentionMenu
-              results={mentionResults}
-              activeIndex={Math.min(mentionIndex, mentionResults.length - 1)}
-              onPick={insertMention}
-            />
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_IMAGE_TYPES.join(',')}
-            multiple
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <div className="flex flex-col rounded-lg border border-transparent bg-input transition-colors focus-within:border-ring">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              onBlur={closeMention}
-              placeholder="Ask AI to build, edit, or @mention a page, collection, or layer..."
-              rows={3}
-              className="min-h-[84px] resize-none border-0 bg-transparent px-3 pt-2.5 pb-1 focus-visible:border-transparent focus-visible:ring-0"
-            />
-            <div className="flex items-center justify-between gap-1 px-2 pb-2">
-              <ModelPicker model={model} onChange={setModel} />
-              <div className="flex items-center gap-1">
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={images.length >= MAX_IMAGES}
-                  aria-label="Attach image"
-                  title={images.length >= MAX_IMAGES ? `Up to ${MAX_IMAGES} images` : 'Attach image'}
-                >
-                  <Icon name="image" />
-                </Button>
-                {isStreaming ? (
-                  <Button
-                    size="xs"
-                    variant="secondary"
-                    onClick={stop}
-                    aria-label="Stop"
-                  >
-                    <Icon name="stop" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="xs"
-                    variant="secondary"
-                    onClick={() => submit(input)}
-                    disabled={!input.trim() && images.length === 0}
-                    aria-label="Send"
-                  >
-                    <Icon name="arrowLeft" className="rotate-90" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <ChatComposer
+          model={model}
+          onModelChange={setModel}
+          isStreaming={isStreaming}
+          onStop={stop}
+          onSubmit={submit}
+          mentionCandidates={mentionCandidates}
+          layerMentions={layerMentions}
+        />
       </div>
     </div>
   );
@@ -504,41 +252,6 @@ function MarkdownText({ text }: { text: string }) {
       className="text-xs leading-relaxed break-words [&_p]:my-1.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1.5 [&_ul]:ml-4 [&_ul]:list-disc [&_ol]:my-1.5 [&_ol]:ml-4 [&_ol]:list-decimal [&_li]:my-0.5 [&_h1]:mt-2 [&_h1]:mb-1 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:mb-1 [&_h2]:text-xs [&_h2]:font-semibold [&_h3]:font-semibold [&_a]:underline [&_a]:underline-offset-2 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_pre]:my-1.5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_blockquote]:text-muted-foreground"
       dangerouslySetInnerHTML={{ __html: html }}
     />
-  );
-}
-
-function ModelPicker({
-  model,
-  onChange,
-}: {
-  model: string | null;
-  onChange: (model: string | null) => void;
-}) {
-  const current = AGENT_MODELS.find((option) => option.id === model);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          size="xs"
-          variant="ghost"
-        >
-          {current?.label ?? 'Select model'}
-          <Icon name="chevronDown" className="size-3" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuRadioGroup
-          value={model ?? DEFAULT_AGENT_MODEL}
-          onValueChange={(value) => onChange(value)}
-        >
-          {AGENT_MODELS.map((option) => (
-            <DropdownMenuRadioItem key={option.id} value={option.id}>
-              {option.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -653,37 +366,6 @@ function ChatHistoryMenu({
         )}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function MentionMenu({
-  results,
-  activeIndex,
-  onPick,
-}: {
-  results: Mention[];
-  activeIndex: number;
-  onPick: (mention: Mention) => void;
-}) {
-  return (
-    <div className="absolute bottom-full left-0 right-0 mb-2 max-h-56 overflow-y-auto rounded-lg border bg-popover shadow-md py-1 z-50">
-      {results.map((result, index) => (
-        <button
-          key={`${result.type}-${result.id}`}
-          type="button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onPick(result)}
-          className={cn(
-            'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs',
-            index === activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
-          )}
-        >
-          <Icon name={MENTION_ICON[result.type]} className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate">{result.label}</span>
-          <span className="ml-auto shrink-0 text-[10px] capitalize text-muted-foreground">{result.type}</span>
-        </button>
-      ))}
-    </div>
   );
 }
 

@@ -662,6 +662,7 @@ const CenterCanvas = React.memo(function CenterCanvas({
   const activeListItemIndex = useEditorStore((state) => state.activeListItemIndex);
   const elementPicker = useEditorStore((state) => state.elementPicker);
   const stopElementPicker = useEditorStore((state) => state.stopElementPicker);
+  const isAiLayerPicking = useEditorStore((state) => state.isAiLayerPicking);
   const assets = useAssetsStore((state) => state.assets);
 
   // Note: Canvas drag-and-drop state is handled by useCanvasDropDetection hook
@@ -1051,6 +1052,18 @@ const CenterCanvas = React.memo(function CenterCanvas({
     // across browsers, which avoids a noticeable lag before smooth scrolling begins.
     scrollEl.scrollTo({ top: Math.max(0, targetScroll), behavior: smooth ? 'smooth' : 'auto' });
   }, [canvasIframeElement]);
+
+  // Show a crosshair cursor inside the canvas while the AI composer is in
+  // "reference a layer" mode (the scroll container handles the area around it).
+  useEffect(() => {
+    if (!isAiLayerPicking) return;
+    const iframeDoc = canvasIframeElement?.contentDocument;
+    if (!iframeDoc?.body) return;
+    iframeDoc.body.style.cursor = 'crosshair';
+    return () => {
+      iframeDoc.body.style.cursor = '';
+    };
+  }, [isAiLayerPicking, canvasIframeElement]);
 
   const scrollCanvasToLayerRef = useRef(scrollCanvasToLayer);
   scrollCanvasToLayerRef.current = scrollCanvasToLayer;
@@ -2553,7 +2566,7 @@ const CenterCanvas = React.memo(function CenterCanvas({
           ref={scrollContainerRef}
           className={cn(
             'absolute inset-0 z-0 overflow-auto',
-            elementPicker?.active && 'cursor-crosshair'
+            (elementPicker?.active || isAiLayerPicking) && 'cursor-crosshair'
           )}
           style={{
             opacity: isCanvasReady ? 1 : 0,
