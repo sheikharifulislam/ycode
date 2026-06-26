@@ -288,9 +288,9 @@ function SortableCollectionItem({
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
         >
-          <div className="flex gap-2 items-center">
-            <Icon name="database" className="size-3" />
-            <span>{collection.name}</span>
+          <div className="flex gap-2 items-center min-w-0">
+            <Icon name="database" className="size-3 shrink-0" />
+            <span className="truncate">{collection.name}</span>
           </div>
 
           {canManageSchema && (
