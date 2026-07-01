@@ -94,6 +94,37 @@ function createResolvedAssetVariable(
     : createAssetVariable(resolvedValue);
 }
 
+/** Build a minimal collection item wrapper around raw field values for inline resolution. */
+function buildMockCollectionItem(values: Record<string, string>): CollectionItemWithValues {
+  return {
+    id: 'temp',
+    collection_id: 'temp',
+    created_at: '',
+    updated_at: '',
+    deleted_at: null,
+    manual_order: 0,
+    is_published: true,
+    is_publishable: true,
+    content_hash: null,
+    values,
+  };
+}
+
+/**
+ * Resolve inline variables inside an image alt's dynamic_text content.
+ * Returns the original alt (or an empty alt) when there's nothing to resolve.
+ */
+function resolveImageAltVariable(
+  altVar: DynamicTextVariable | undefined,
+  resolveContent: (content: string) => string
+): DynamicTextVariable {
+  const content = altVar?.data?.content;
+  if (altVar?.type === 'dynamic_text' && typeof content === 'string' && content.includes('<ycode-inline-variable>')) {
+    return { type: 'dynamic_text', data: { content: resolveContent(content) } };
+  }
+  return altVar || createDynamicTextVariable('');
+}
+
 export interface PageData {
   page: Page;
   pageLayers: PageLayers;
@@ -1345,19 +1376,7 @@ async function injectCollectionData(
   else if (textVariable && textVariable.type === 'dynamic_text') {
     const textContent = textVariable.data.content;
     if (textContent.includes('<ycode-inline-variable>')) {
-      const mockItem: CollectionItemWithValues = {
-        id: 'temp',
-        collection_id: 'temp',
-        created_at: '',
-        updated_at: '',
-        deleted_at: null,
-        manual_order: 0,
-        is_published: true,
-        is_publishable: true,
-        content_hash: null,
-        values: enhancedValues,
-      };
-      const resolved = resolveInlineVariablesWithRelationships(textContent, mockItem, timezone, rawItemValues);
+      const resolved = resolveInlineVariablesWithRelationships(textContent, buildMockCollectionItem(enhancedValues), timezone, rawItemValues);
 
       resolvedVars.text = {
         type: 'dynamic_text',
@@ -1366,13 +1385,24 @@ async function injectCollectionData(
     }
   }
 
-  // Image src field binding (variables structure)
+  // Image src field binding (variables structure). The alt may carry inline
+  // variables (e.g. multi-asset __asset_filename), so resolve it in both the
+  // field-bound and static-src cases.
+  const resolveImageAlt = (alt: DynamicTextVariable | undefined) =>
+    resolveImageAltVariable(alt, (content) =>
+      resolveInlineVariablesWithRelationships(content, buildMockCollectionItem(enhancedValues), timezone, rawItemValues));
+
   const imageSrc = layer.variables?.image?.src;
   if (imageSrc && isFieldVariable(imageSrc) && imageSrc.data.field_id) {
     const resolvedValue = resolveFieldValueWithRelationships(imageSrc, enhancedValues, layerDataMap);
     resolvedVars.image = {
       src: createResolvedAssetVariable(imageSrc.data.field_id, resolvedValue, imageSrc),
-      alt: layer.variables?.image?.alt || createDynamicTextVariable(''),
+      alt: resolveImageAlt(layer.variables?.image?.alt),
+    };
+  } else if (layer.variables?.image) {
+    resolvedVars.image = {
+      ...layer.variables.image,
+      alt: resolveImageAlt(layer.variables.image.alt),
     };
   }
 
@@ -3894,19 +3924,7 @@ async function injectCollectionDataForHtml(
   else if (textVariable && textVariable.type === 'dynamic_text') {
     const textContent = textVariable.data.content;
     if (textContent.includes('<ycode-inline-variable>')) {
-      const mockItem: CollectionItemWithValues = {
-        id: 'temp',
-        collection_id: 'temp',
-        created_at: '',
-        updated_at: '',
-        deleted_at: null,
-        manual_order: 0,
-        is_published: true,
-        is_publishable: true,
-        content_hash: null,
-        values: enhancedValues,
-      };
-      const resolved = resolveInlineVariables(textContent, mockItem, timezone, rawItemValues);
+      const resolved = resolveInlineVariables(textContent, buildMockCollectionItem(enhancedValues), timezone, rawItemValues);
       resolvedVars.text = {
         type: 'dynamic_text',
         data: { content: resolved },
@@ -3924,13 +3942,24 @@ async function injectCollectionDataForHtml(
     return enhancedValues[fullPath] || '';
   };
 
-  // Image src field binding (variables structure)
+  // Image src field binding (variables structure). The alt may carry inline
+  // variables (e.g. multi-asset __asset_filename), so resolve it in both the
+  // field-bound and static-src cases.
+  const resolveImageAlt = (alt: DynamicTextVariable | undefined) =>
+    resolveImageAltVariable(alt, (content) =>
+      resolveInlineVariables(content, buildMockCollectionItem(enhancedValues), timezone, rawItemValues));
+
   const imageSrc = layer.variables?.image?.src;
   if (imageSrc && isFieldVariable(imageSrc) && imageSrc.data.field_id) {
     const resolvedValue = resolveFieldPath(imageSrc);
     resolvedVars.image = {
       src: createResolvedAssetVariable(imageSrc.data.field_id, resolvedValue, imageSrc),
-      alt: layer.variables?.image?.alt || createDynamicTextVariable(''),
+      alt: resolveImageAlt(layer.variables?.image?.alt),
+    };
+  } else if (layer.variables?.image) {
+    resolvedVars.image = {
+      ...layer.variables.image,
+      alt: resolveImageAlt(layer.variables.image.alt),
     };
   }
 
