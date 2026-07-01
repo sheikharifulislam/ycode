@@ -605,27 +605,29 @@ export const useAiChatStore = create<AiChatStore>()(
           const checkpoint = turnCheckpoints.get(messageId);
           if (!checkpoint || get().status !== 'idle') return;
 
-          // Restore every changed page to its pre-turn state, then flag the turn
-          // as reverted (the checkpoint is kept so Redo can re-apply the result).
-          await restoreCheckpointPages(checkpoint.pages.map((p) => ({ pageId: p.pageId, layers: p.before })));
+          // Flip the button label immediately (the checkpoint is kept so Redo can
+          // re-apply the result), then restore each changed page to its pre-turn
+          // state — the async draft load/save shouldn't delay the UI feedback.
           set((state) => ({
             messages: state.messages.map((message) =>
               message.id === messageId ? { ...message, reverted: true } : message,
             ),
           }));
+          await restoreCheckpointPages(checkpoint.pages.map((p) => ({ pageId: p.pageId, layers: p.before })));
         },
 
         redoTurn: async (messageId: string) => {
           const checkpoint = turnCheckpoints.get(messageId);
           if (!checkpoint || get().status !== 'idle') return;
 
-          // Re-apply the turn's result (post-edit state) to every changed page.
-          await restoreCheckpointPages(checkpoint.pages.map((p) => ({ pageId: p.pageId, layers: p.after })));
+          // Flip the button label immediately, then re-apply the turn's result
+          // (post-edit state) to every changed page.
           set((state) => ({
             messages: state.messages.map((message) =>
               message.id === messageId ? { ...message, reverted: false } : message,
             ),
           }));
+          await restoreCheckpointPages(checkpoint.pages.map((p) => ({ pageId: p.pageId, layers: p.after })));
         },
 
         stop: () => {
