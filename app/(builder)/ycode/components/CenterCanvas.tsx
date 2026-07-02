@@ -2619,9 +2619,12 @@ const CenterCanvas = React.memo(function CenterCanvas({
               minWidth: '100%',
               minHeight: '100%',
               // When editing a component, center the canvas inside the scroll area.
+              // Rely on minHeight (not a fixed height) so the container grows with
+              // tall content — a fixed height:100% would keep the centered child
+              // overflowing past the unreachable top edge (flexbox centering clip).
               // Page editing keeps default block flow so absolute overlays anchor at the top.
               ...(editingComponentId
-                ? { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }
+                ? { display: 'flex', alignItems: 'center', justifyContent: 'center' }
                 : null),
             }}
           >

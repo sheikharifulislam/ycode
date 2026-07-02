@@ -18,7 +18,7 @@ import { createRoot, Root } from 'react-dom/client';
 import LayerRenderer from '@/components/LayerRenderer';
 import { serializeLayers, getClassesString } from '@/lib/layer-utils';
 import { collectEditorHiddenLayerIds } from '@/lib/animation-utils';
-import { getCanvasIframeHtml, updateViewportOverrides, measureContentExtent, isNonContentLayer } from '@/lib/canvas-utils';
+import { getCanvasIframeHtml, updateViewportOverrides, measureContentExtent, isNonContentLayer, getClippedLayerRect } from '@/lib/canvas-utils';
 import { CanvasPortalProvider } from '@/lib/canvas-portal-context';
 import { cn } from '@/lib/utils';
 import { loadSwiperCss } from '@/lib/slider-utils';
@@ -848,8 +848,13 @@ const Canvas = React.memo(function Canvas({
             // the iframe height and would balloon the canvas. Revealed dropdowns
             // keep a real rect and are measured so the height recalculates.
             if (win && isNonContentLayer(node, win)) return;
-            maxChildWidth = Math.max(maxChildWidth, rect.right - bodyRect.left);
-            maxChildBottom = Math.max(maxChildBottom, rect.bottom - bodyRect.top);
+            // Clamp to clipping ancestors so layers hidden by an overflow-hidden
+            // container (e.g. stacked tab panels inside `max-h-[720px] overflow-hidden`)
+            // don't inflate the measured extent with empty space.
+            const clipped = win ? getClippedLayerRect(node, body, win) : rect;
+            if (clipped.width <= 0 || clipped.height <= 0) return;
+            maxChildWidth = Math.max(maxChildWidth, clipped.right - bodyRect.left);
+            maxChildBottom = Math.max(maxChildBottom, clipped.bottom - bodyRect.top);
           });
 
           onContentWidthChange(maxChildWidth);
