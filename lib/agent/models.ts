@@ -12,7 +12,7 @@ export interface AgentModelOption {
 }
 
 export const AGENT_MODELS: AgentModelOption[] = [
-  { id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' },
+  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
   { id: 'claude-opus-4-8', label: 'Opus 4.8' },
 ];
 

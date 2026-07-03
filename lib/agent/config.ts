@@ -9,7 +9,7 @@ import { getSettingByKey } from '@/lib/repositories/settingsRepository';
  */
 
 /** Default Anthropic model. Overridable via ANTHROPIC_MODEL or the settings store. */
-export const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-5';
+export const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5';
 
 /** Max tokens per assistant turn. */
 export const DEFAULT_MAX_TOKENS = 8192;
