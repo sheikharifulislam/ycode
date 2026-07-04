@@ -319,11 +319,11 @@ async function executeTool(
 /**
  * Standing policy for the in-app agent, appended to the shared MCP instructions.
  *
- * The shared instructions tell the agent to `publish` as the final step of a
- * build. That is wrong for the in-app builder, which is draft-first: the user
- * reviews edits on the canvas and clicks Publish themselves. The `publish` tool
- * is also withheld from the in-app toolset (see registry.ts), so this is belt
- * and suspenders — it stops the agent from claiming it published.
+ * The in-app builder is draft-first: the user reviews edits on the canvas and
+ * clicks Publish themselves. The shared instructions carry no publishing
+ * guidance (the MCP server appends MCP_PUBLISHING_INSTRUCTIONS separately) and
+ * the `publish` tool is withheld from the in-app toolset (see registry.ts), so
+ * this is belt and suspenders — it stops the agent from claiming it published.
  */
 const AGENT_POLICY = [
   'Never publish. The user controls publishing — they review your changes on the canvas and click the Publish button when ready.',
