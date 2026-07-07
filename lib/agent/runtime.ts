@@ -29,8 +29,8 @@ export interface AgentEditorContext {
   selectedLayerIds?: string[];
   /** Selected layers with display names — preferred over bare ids when present. */
   selectedLayers?: Array<{ id: string; name?: string }>;
-  /** Pages/collections/layers the user @-mentioned in the message. */
-  mentions?: Array<{ type: 'page' | 'collection' | 'layer'; id: string; label: string }>;
+  /** Pages/collections/layers/components the user @-mentioned in the message. */
+  mentions?: Array<{ type: 'page' | 'collection' | 'layer' | 'component'; id: string; label: string }>;
   /** URLs the user referenced in the message. */
   referenceUrls?: string[];
 }
@@ -773,9 +773,11 @@ function buildSystemPrompt(context?: AgentEditorContext): string {
     const pages = byType('page');
     const collections = byType('collection');
     const layers = byType('layer');
+    const components = byType('component');
     if (pages) parts.push(`page(s): ${pages}`);
     if (collections) parts.push(`collection(s): ${collections}`);
     if (layers) parts.push(`layer(s): ${layers}`);
+    if (components) parts.push(`component(s): ${components}`);
     if (parts.length > 0) {
       lines.push(`The user referenced ${parts.join('; ')}. Use these ids directly with the relevant tools.`);
     }

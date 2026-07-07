@@ -8,7 +8,7 @@ import { Node } from '@tiptap/core';
  * Serialized HTML carries the data on a `span[data-mention-id]` so a pasted /
  * round-tripped document can be re-parsed into pills if ever needed.
  */
-export type LayerMentionType = 'layer' | 'page' | 'collection';
+export type LayerMentionType = 'layer' | 'page' | 'collection' | 'component';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {

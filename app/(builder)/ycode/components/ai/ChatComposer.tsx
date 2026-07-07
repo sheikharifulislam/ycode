@@ -10,8 +10,12 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
@@ -25,13 +29,36 @@ import { LayerMentionWithView } from './LayerMentionView';
 
 const MAX_IMAGES = 4;
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const MAX_MENTION_RESULTS = 8;
+/** Max results shown per category so one large group (usually layers) can't
+ * crowd the others out of the menu. */
+const MAX_MENTION_RESULTS_PER_CATEGORY = 6;
 
-const MENTION_ICON: Record<Mention['type'], 'page' | 'database' | 'layers'> = {
+const MENTION_ICON: Record<Mention['type'], 'page' | 'database' | 'layers' | 'component'> = {
   page: 'page',
   collection: 'database',
   layer: 'layers',
+  component: 'component',
 };
+
+/** Mention categories in the order they appear in the menu (and the order the
+ * flat results array is built in, so keyboard nav lines up with the visuals). */
+const MENTION_CATEGORIES: { type: Mention['type']; label: string }[] = [
+  { type: 'page', label: 'Pages' },
+  { type: 'layer', label: 'Layers' },
+  { type: 'component', label: 'Components' },
+  { type: 'collection', label: 'CMS' },
+];
+
+// Radix forwards `onOpenAutoFocus` to the (sub)content but the ShadCN wrappers
+// don't surface it in their prop types. These casts let the mention menu prevent
+// the content from stealing focus on open so the caret stays in the composer.
+type WithOpenAutoFocus<T> = T & { onOpenAutoFocus?: (event: Event) => void };
+const MentionContent = DropdownMenuContent as React.FC<
+  WithOpenAutoFocus<React.ComponentProps<typeof DropdownMenuContent>>
+>;
+const MentionSubContent = DropdownMenuSubContent as React.FC<
+  WithOpenAutoFocus<React.ComponentProps<typeof DropdownMenuSubContent>>
+>;
 
 /** The active "@query" token under the caret, if any. */
 function getActiveMention(text: string, caret: number): { query: string; start: number } | null {
@@ -123,6 +150,7 @@ export default function ChatComposer({
   const selectedLayerIds = useEditorStore((s) => s.selectedLayerIds);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -137,9 +165,14 @@ export default function ChatComposer({
   const mentionResults = useMemo<Mention[]>(() => {
     if (!mentionActive) return [];
     const query = mentionQuery.toLowerCase();
-    return mentionCandidates
-      .filter((candidate) => candidate.label.toLowerCase().includes(query))
-      .slice(0, MAX_MENTION_RESULTS);
+    const matches = mentionCandidates.filter((candidate) =>
+      candidate.label.toLowerCase().includes(query),
+    );
+    // Build the flat list in category order, capping each category, so the menu
+    // stays balanced and the flat index matches the grouped render order.
+    return MENTION_CATEGORIES.flatMap(({ type }) =>
+      matches.filter((candidate) => candidate.type === type).slice(0, MAX_MENTION_RESULTS_PER_CATEGORY),
+    );
   }, [mentionActive, mentionQuery, mentionCandidates]);
 
   // Mirror dynamic state into refs so the editor's keydown/paste handlers (bound
@@ -261,7 +294,7 @@ export default function ChatComposer({
     extensions: [
       StarterKit.configure({ heading: false }),
       Placeholder.configure({
-        placeholder: 'Ask AI to build, edit, or @mention a page, collection, or layer...',
+        placeholder: 'Ask AI to build, edit, or @mention a page, layer, component, or collection...',
       }),
       LayerMentionWithView,
     ],
@@ -367,6 +400,19 @@ export default function ChatComposer({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isPicking, cancelPicking]);
 
+  // The mention menu is a (controlled) Radix DropdownMenu, which pulls focus to
+  // its content when it opens. Return focus to the editor so the user can keep
+  // typing to filter — the menu is driven by the composer's own key handling and
+  // mouse hover, so it never needs focus. rAF lets Radix's focus run first.
+  useEffect(() => {
+    if (!mentionActive) return;
+    const raf = requestAnimationFrame(() => {
+      const editor = editorRef.current;
+      if (editor && !editor.isFocused) editor.commands.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [mentionActive, mentionQuery, mentionIndex]);
+
   // Mirror pick mode into the editor store so the canvas can show teal outlines
   // and a crosshair cursor while the user is choosing a layer to reference.
   useEffect(() => {
@@ -375,14 +421,18 @@ export default function ChatComposer({
   }, [isPicking]);
 
   return (
-    <div className="relative">
-      {mentionActive && mentionResults.length > 0 && (
-        <MentionMenu
-          results={mentionResults}
-          activeIndex={Math.min(mentionIndex, mentionResults.length - 1)}
-          onPick={insertMentionPill}
-        />
-      )}
+    <div className="relative" ref={composerRef}>
+      <MentionMenu
+        open={mentionActive && mentionResults.length > 0}
+        results={mentionResults}
+        activeIndex={Math.min(mentionIndex, mentionResults.length - 1)}
+        onPick={insertMentionPill}
+        onActivate={setMentionIndex}
+        onOpenChange={(open) => {
+          if (!open) closeMention();
+        }}
+        anchorRef={composerRef}
+      />
       <input
         ref={fileInputRef}
         type="file"
@@ -510,33 +560,104 @@ function ModelPicker({
   );
 }
 
+/**
+ * Categorized "@" mention menu built on the ShadCN DropdownMenu submenu
+ * primitives: each category is a SubTrigger whose items flyout to the right in a
+ * SubContent. It's a controlled menu (open follows the composer's mention state)
+ * and deliberately does NOT steal focus — `onOpenAutoFocus` is prevented so the
+ * caret stays in the composer and typing keeps live-filtering. Selection is
+ * driven by `activeIndex` into the flat, category-ordered `results`, so mouse
+ * hover and the composer's own Arrow/Enter handling stay in sync. (Radix's
+ * ContextMenu can't be opened programmatically, so DropdownMenu — which shares
+ * the identical submenu components — is used.)
+ */
 function MentionMenu({
+  open,
   results,
   activeIndex,
   onPick,
+  onActivate,
+  onOpenChange,
+  anchorRef,
 }: {
+  open: boolean;
   results: Mention[];
   activeIndex: number;
   onPick: (mention: Mention) => void;
+  onActivate: (index: number) => void;
+  onOpenChange: (open: boolean) => void;
+  anchorRef: React.RefObject<HTMLElement | null>;
 }) {
+  const categories = MENTION_CATEGORIES.filter(({ type }) =>
+    results.some((result) => result.type === type),
+  );
+  const activeType = results[activeIndex]?.type ?? categories[0]?.type;
+
+  const firstIndexOfType = (type: Mention['type']) =>
+    results.findIndex((result) => result.type === type);
+
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-2 max-h-56 overflow-y-auto rounded-lg border bg-popover shadow-md py-1 z-50">
-      {results.map((result, index) => (
-        <button
-          key={`${result.type}-${result.id}`}
-          type="button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onPick(result)}
-          className={cn(
-            'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs',
-            index === activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
-          )}
-        >
-          <Icon name={MENTION_ICON[result.type]} className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate">{result.label}</span>
-          <span className="ml-auto shrink-0 text-[10px] capitalize text-muted-foreground">{result.type}</span>
-        </button>
-      ))}
-    </div>
+    <DropdownMenu
+      open={open} onOpenChange={onOpenChange}
+      modal={false}
+    >
+      <DropdownMenuTrigger asChild>
+        <span aria-hidden className="pointer-events-none absolute left-0 top-0 size-0" />
+      </DropdownMenuTrigger>
+      <MentionContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-44"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onInteractOutside={(event) => {
+          // Fires for both outside pointer-downs and focus moving out of the menu.
+          // Keep the menu open while the interaction (including us returning focus
+          // to the editor) stays within the composer; let genuine outside clicks
+          // dismiss it.
+          const target = event.detail.originalEvent.target as Node | null;
+          if (target && anchorRef.current?.contains(target)) event.preventDefault();
+        }}
+      >
+        {categories.map(({ type, label }) => {
+          const items = results.filter((result) => result.type === type);
+          return (
+            <DropdownMenuSub
+              key={type}
+              open={type === activeType}
+              onOpenChange={(isOpen) => {
+                if (isOpen) onActivate(firstIndexOfType(type));
+              }}
+            >
+              <DropdownMenuSubTrigger onMouseEnter={() => onActivate(firstIndexOfType(type))}>
+                <Icon name={MENTION_ICON[type]} className="text-muted-foreground" />
+                <span className="truncate">{label}</span>
+              </DropdownMenuSubTrigger>
+              <MentionSubContent
+                className="max-h-56 w-52 overflow-y-auto"
+                onOpenAutoFocus={(event) => event.preventDefault()}
+              >
+                {items.map((result) => {
+                  const index = results.indexOf(result);
+                  const isActive = index === activeIndex;
+                  return (
+                    <DropdownMenuItem
+                      key={`${result.type}-${result.id}`}
+                      onSelect={() => onPick(result)}
+                      onMouseEnter={() => onActivate(index)}
+                      className={cn(isActive && 'bg-accent text-accent-foreground')}
+                    >
+                      <Icon name={MENTION_ICON[result.type]} className="text-muted-foreground" />
+                      <span className="truncate">{result.label}</span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </MentionSubContent>
+            </DropdownMenuSub>
+          );
+        })}
+      </MentionContent>
+    </DropdownMenu>
   );
 }

@@ -131,9 +131,9 @@ export interface ImageAttachment {
   dataUrl: string;
 }
 
-/** A page, collection, or layer the user referenced via @-mention. */
+/** A page, collection, layer, or component the user referenced via @-mention. */
 export interface Mention {
-  type: 'page' | 'collection' | 'layer';
+  type: 'page' | 'collection' | 'layer' | 'component';
   id: string;
   label: string;
 }

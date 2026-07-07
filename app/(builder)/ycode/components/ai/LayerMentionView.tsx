@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Icon } from '@/components/ui/icon';
 import { LayerMention, type LayerMentionType } from '@/lib/tiptap-extensions/layer-mention';
 
-const MENTION_ICON: Record<LayerMentionType, 'page' | 'database' | 'layers'> = {
+const MENTION_ICON: Record<LayerMentionType, 'page' | 'database' | 'layers' | 'component'> = {
   page: 'page',
   collection: 'database',
   layer: 'layers',
+  component: 'component',
 };
 
 /** Inline badge rendered for a reference pill, with a click-to-remove affordance. */

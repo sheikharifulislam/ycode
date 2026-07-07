@@ -58,7 +58,7 @@ const bodySchema = z.object({
   selectedLayerIds: z.array(z.string()).optional(),
   selectedLayers: z.array(z.object({ id: z.string(), name: z.string().optional() })).optional(),
   mentions: z
-    .array(z.object({ type: z.enum(['page', 'collection', 'layer']), id: z.string(), label: z.string() }))
+    .array(z.object({ type: z.enum(['page', 'collection', 'layer', 'component']), id: z.string(), label: z.string() }))
     .optional(),
   referenceUrls: z.array(z.string()).optional(),
   model: z.string().optional(),

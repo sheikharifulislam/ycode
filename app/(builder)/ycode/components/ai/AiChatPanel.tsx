@@ -33,6 +33,7 @@ import { useAgentSettingsStore } from '@/stores/useAgentSettingsStore';
 import { useAiChatStore } from '@/stores/useAiChatStore';
 import type { ChatMessage, ChatMessagePart, ChatSession, ChatToolCall, ImageAttachment, Mention, SelectedLayerRef, SessionUsage, TurnChange } from '@/stores/useAiChatStore';
 import { useCollectionsStore } from '@/stores/useCollectionsStore';
+import { useComponentsStore } from '@/stores/useComponentsStore';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { usePagesStore } from '@/stores/usePagesStore';
 import type { Layer } from '@/types';
@@ -146,10 +147,11 @@ function replaceLayerIdsWithBadges(text: string): string {
   });
 }
 
-const MENTION_ICON: Record<Mention['type'], 'page' | 'database' | 'layers'> = {
+const MENTION_ICON: Record<Mention['type'], 'page' | 'database' | 'layers' | 'component'> = {
   page: 'page',
   collection: 'database',
   layer: 'layers',
+  component: 'component',
 };
 
 function escapeRegExp(value: string): string {
@@ -236,6 +238,7 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
   );
   const pages = usePagesStore((s) => s.pages);
   const collections = useCollectionsStore((s) => s.collections);
+  const components = useComponentsStore((s) => s.components);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   // Whether the view is pinned to the bottom. Updated on user scroll so auto-
@@ -270,15 +273,22 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
     [draftLayers],
   );
 
+  // Ordered by category (Pages, Layers, Components, CMS) so the mention menu's
+  // flat keyboard-nav index matches the grouped visual order.
   const mentionCandidates = useMemo<Mention[]>(() => {
     const fromPages: Mention[] = pages.map((page) => ({ type: 'page', id: page.id, label: page.name }));
+    const fromComponents: Mention[] = components.map((component) => ({
+      type: 'component',
+      id: component.id,
+      label: component.name,
+    }));
     const fromCollections: Mention[] = collections.map((collection) => ({
       type: 'collection',
       id: collection.id,
       label: collection.name,
     }));
-    return [...fromPages, ...fromCollections, ...layerMentions];
-  }, [pages, collections, layerMentions]);
+    return [...fromPages, ...layerMentions, ...fromComponents, ...fromCollections];
+  }, [pages, layerMentions, components, collections]);
 
   // The canvas selection is sent to the agent as background context only — it is
   // not shown as a pill. Explicit pills come from the composer's @ menu / picker.
