@@ -18,6 +18,8 @@ declare module '@tiptap/core' {
         mentionId: string;
         mentionType: LayerMentionType;
         label: string;
+        /** Display-only: render the component icon (layer is a component instance). */
+        isComponentInstance?: boolean;
       }) => ReturnType;
     };
   }
@@ -50,6 +52,12 @@ export const LayerMention = Node.create({
         renderHTML: (attributes) =>
           attributes.label ? { 'data-mention-label': attributes.label } : {},
       },
+      isComponentInstance: {
+        default: false,
+        parseHTML: (element) => element.getAttribute('data-mention-component') === 'true',
+        renderHTML: (attributes) =>
+          attributes.isComponentInstance ? { 'data-mention-component': 'true' } : {},
+      },
     };
   },
 
@@ -65,6 +73,7 @@ export const LayerMention = Node.create({
         'data-mention-id': node.attrs.mentionId,
         'data-mention-type': node.attrs.mentionType,
         'data-mention-label': label,
+        ...(node.attrs.isComponentInstance ? { 'data-mention-component': 'true' } : {}),
       },
       `@${label}`,
     ];

@@ -19,6 +19,7 @@ const MENTION_ICON: Record<LayerMentionType, 'page' | 'database' | 'layers' | 'c
 function LayerMentionComponent({ node, deleteNode }: ReactNodeViewProps) {
   const mentionType = (node.attrs.mentionType as LayerMentionType) ?? 'layer';
   const label = (node.attrs.label as string) ?? '';
+  const iconName = node.attrs.isComponentInstance ? 'component' : (MENTION_ICON[mentionType] ?? 'layers');
 
   return (
     <NodeViewWrapper as="span" className="inline-flex items-center align-middle">
@@ -28,7 +29,7 @@ function LayerMentionComponent({ node, deleteNode }: ReactNodeViewProps) {
       >
         <span className="relative inline-flex size-2.5 shrink-0 items-center justify-center">
           <Icon
-            name={MENTION_ICON[mentionType] ?? 'layers'}
+            name={iconName}
             className="size-2.5 group-hover:hidden"
           />
           <button

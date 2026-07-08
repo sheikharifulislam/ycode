@@ -112,6 +112,7 @@ function editorToMessage(editor: Editor): { text: string; mentions: Mention[] } 
           type: node.attrs.mentionType,
           id: node.attrs.mentionId,
           label: node.attrs.label,
+          ...(node.attrs.isComponentInstance ? { isComponentInstance: true } : {}),
         });
       }
     }
@@ -220,6 +221,7 @@ export default function ChatComposer({
         mentionId: candidate.id,
         mentionType: candidate.type,
         label: candidate.label,
+        isComponentInstance: candidate.isComponentInstance,
       })
       .run();
     closeMention();
@@ -236,6 +238,7 @@ export default function ChatComposer({
         mentionId: id,
         mentionType: 'layer',
         label: match?.label ?? 'Layer',
+        isComponentInstance: match?.isComponentInstance,
       });
     }
     chain.run();
@@ -648,7 +651,7 @@ function MentionMenu({
                       onMouseEnter={() => onActivate(index)}
                       className={cn(isActive && 'bg-accent text-accent-foreground')}
                     >
-                      <Icon name={MENTION_ICON[result.type]} className="text-muted-foreground" />
+                      <Icon name={result.isComponentInstance ? 'component' : MENTION_ICON[result.type]} className="text-muted-foreground" />
                       <span className="truncate">{result.label}</span>
                     </DropdownMenuItem>
                   );

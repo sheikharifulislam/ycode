@@ -79,13 +79,25 @@ function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(html);
 }
 
-/** Flatten a layer tree into mention candidates (skips the root Body layer). */
-function flattenLayerMentions(layers: Layer[], acc: Mention[] = []): Mention[] {
+/** Flatten a layer tree into mention candidates (skips the root Body layer).
+ * `componentNameById` resolves a component instance's label to the actual
+ * component name (otherwise getLayerName falls back to "Component"). */
+function flattenLayerMentions(
+  layers: Layer[],
+  componentNameById: Map<string, string>,
+  acc: Mention[] = [],
+): Mention[] {
   for (const layer of layers) {
     if (layer.id !== 'body') {
-      acc.push({ type: 'layer', id: layer.id, label: getLayerName(layer) });
+      const componentName = layer.componentId ? componentNameById.get(layer.componentId) : undefined;
+      acc.push({
+        type: 'layer',
+        id: layer.id,
+        label: getLayerName(layer, { component_name: componentName }),
+        isComponentInstance: !!layer.componentId,
+      });
     }
-    if (layer.children?.length) flattenLayerMentions(layer.children, acc);
+    if (layer.children?.length) flattenLayerMentions(layer.children, componentNameById, acc);
   }
   return acc;
 }
@@ -159,13 +171,13 @@ function escapeRegExp(value: string): string {
 }
 
 /** Inline reference badge shown inside a sent user message (read-only). */
-function MentionBadge({ type, label }: { type: Mention['type']; label: string }) {
+function MentionBadge({ type, label, isComponentInstance }: { type: Mention['type']; label: string; isComponentInstance?: boolean }) {
   return (
     <Badge
       variant="secondary"
-      className="h-[1.125rem] gap-1 rounded-md px-1 align-middle text-[12px] font-normal [&>svg]:size-2.5"
+      className="h-4 gap-1 rounded-md px-1 align-middle text-[12px] font-normal [&>svg]:size-2.5"
     >
-      <Icon name={MENTION_ICON[type] ?? 'layers'} className="shrink-0" />
+      <Icon name={isComponentInstance ? 'component' : (MENTION_ICON[type] ?? 'layers')} className="shrink-0" />
       <span className="max-w-[140px] truncate">{label}</span>
     </Badge>
   );
@@ -195,6 +207,7 @@ function MessageTextWithMentions({ text, mentions }: { text: string; mentions?: 
       <MentionBadge
         key={key++} type={mention?.type ?? 'layer'}
         label={match[1]}
+        isComponentInstance={mention?.isComponentInstance}
       />,
     );
     lastIndex = regex.lastIndex;
@@ -268,10 +281,11 @@ export default function AiChatPanel({ embedded = false }: AiChatPanelProps) {
     setShowJumpToLatest(false);
   };
 
-  const layerMentions = useMemo<Mention[]>(
-    () => (draftLayers ? flattenLayerMentions(draftLayers) : []),
-    [draftLayers],
-  );
+  const layerMentions = useMemo<Mention[]>(() => {
+    if (!draftLayers) return [];
+    const componentNameById = new Map(components.map((component) => [component.id, component.name]));
+    return flattenLayerMentions(draftLayers, componentNameById);
+  }, [draftLayers, components]);
 
   // Ordered by category (Pages, Layers, Components, CMS) so the mention menu's
   // flat keyboard-nav index matches the grouped visual order.

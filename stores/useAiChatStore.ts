@@ -136,6 +136,10 @@ export interface Mention {
   type: 'page' | 'collection' | 'layer' | 'component';
   id: string;
   label: string;
+  /** Display-only: the referenced layer is a component instance (has a
+   * componentId). Kept a `layer` mention semantically (the id is the layer id),
+   * but rendered with the component icon so users can tell it apart. */
+  isComponentInstance?: boolean;
 }
 
 /** Extra context attached to a single message from the composer. */
