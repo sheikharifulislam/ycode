@@ -73,12 +73,18 @@ export const DEFAULT_AGENT_MODEL = 'claude-sonnet-5';
  * Model for the automatic visual self-review pass, per provider. Critiquing a
  * screenshot and making small fixes doesn't need the strongest builder model,
  * and the review turn re-runs the full system + tools prompt — on a flagship
- * model that doubles an already expensive turn. The review stays on the same
- * provider as the main turn so it never requires a second API key.
+ * model that doubles an already expensive turn. Each provider's review model is
+ * a genuinely faster/cheaper tier than its builder default, so the review pass
+ * adds far less wall-clock time. The review stays on the same provider as the
+ * main turn so it never requires a second API key.
+ *
+ * Some of these ids (e.g. the Anthropic Haiku tier) are intentionally NOT in the
+ * user-facing picker (AGENT_MODELS) — they're review-only, so getAgentProvider
+ * honors them via isReviewModel even though they aren't selectable models.
  */
 const REVIEW_MODEL_BY_PROVIDER: Record<AgentProviderId, string> = {
-  anthropic: 'claude-sonnet-5',
-  openai: 'gpt-5.5',
+  anthropic: 'claude-haiku-4-5',
+  openai: 'gpt-5-mini',
   google: 'gemini-3.5-flash',
 };
 
@@ -88,9 +94,26 @@ export function reviewModelFor(model: string | null): string {
   return REVIEW_MODEL_BY_PROVIDER[provider];
 }
 
-/** Which provider serves a model id, or null for unknown/custom models. */
+/** Models used only for the auto-review pass. Some aren't in the picker
+ * allowlist, so getAgentProvider accepts them for review requests specifically
+ * (still requiring the provider's key). */
+export const REVIEW_MODELS: ReadonlySet<string> = new Set(Object.values(REVIEW_MODEL_BY_PROVIDER));
+
+/** Whether a model id is a review-only model the server should honor even when
+ * it isn't a selectable (allowlisted/enabled) picker model. */
+export function isReviewModel(id: string): boolean {
+  return REVIEW_MODELS.has(id);
+}
+
+/** Which provider serves a model id, or null for unknown/custom models.
+ * Resolves both picker models (AGENT_MODELS) and review-only models (which are
+ * intentionally absent from the picker) so key/provider checks work for both. */
 export function providerOfModel(id: string): AgentProviderId | null {
-  return AGENT_MODELS.find((model) => model.id === id)?.provider ?? null;
+  const pickerProvider = AGENT_MODELS.find((model) => model.id === id)?.provider;
+  if (pickerProvider) return pickerProvider;
+  const reviewEntry = (Object.entries(REVIEW_MODEL_BY_PROVIDER) as Array<[AgentProviderId, string]>)
+    .find(([, modelId]) => modelId === id);
+  return reviewEntry ? reviewEntry[0] : null;
 }
 
 /** Whether a requested model id is one the agent is allowed to use. */
@@ -122,6 +145,8 @@ interface ModelPricing {
 const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-sonnet-5': { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
   'claude-opus-4-8': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  // Review-only fast tier (not in the picker). Estimate for the cost badge.
+  'claude-haiku-4-5': { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
   'gpt-5.5': { input: 5, output: 30, cacheWrite: 5, cacheRead: 0.5 },
   'gpt-5-mini': { input: 0.25, output: 2, cacheWrite: 0.25, cacheRead: 0.025 },
   'gemini-3.1-pro-preview': { input: 2, output: 12, cacheWrite: 2, cacheRead: 0.2 },

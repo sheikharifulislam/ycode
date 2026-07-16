@@ -1,5 +1,5 @@
 import { resolveAgentConfig } from '@/lib/agent/config';
-import { isAllowedModel, providerOfModel } from '@/lib/agent/models';
+import { isAllowedModel, isReviewModel, providerOfModel } from '@/lib/agent/models';
 
 import { createAnthropicProvider } from './anthropic';
 import { createGoogleProvider } from './google';
@@ -63,6 +63,15 @@ export async function getAgentProvider(requestedModel?: string | null): Promise<
     requestedModel &&
     isAllowedModel(requestedModel) &&
     config.enabledModels.includes(requestedModel) &&
+    hasKeyForModel(config.providers, requestedModel)
+  ) {
+    model = requestedModel;
+  } else if (
+    // Review-only models aren't in the picker allowlist, so they skip the
+    // enabled-models check — but still require the provider's key so the review
+    // pass never needs a second credential.
+    requestedModel &&
+    isReviewModel(requestedModel) &&
     hasKeyForModel(config.providers, requestedModel)
   ) {
     model = requestedModel;

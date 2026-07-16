@@ -34,13 +34,32 @@ const TAILWIND_INIT_DELAY = 1500;
 /** Track in-progress generations to prevent duplicates */
 const pendingGenerations = new Set<string>();
 
+/** Await a few animation frames inside the iframe so layout settles after a
+ * render without a fixed timeout. Falls back to setTimeout if rAF is missing. */
+async function waitForFrames(win: Window | null, count = 2): Promise<void> {
+  const raf =
+    win && typeof win.requestAnimationFrame === 'function'
+      ? win.requestAnimationFrame.bind(win)
+      : (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 16);
+  for (let i = 0; i < count; i += 1) {
+    await new Promise<void>((resolve) => raf(() => resolve()));
+  }
+}
+
 /**
  * Render layers in a hidden iframe and capture as an image blob.
  * Creates and destroys the iframe automatically.
+ *
+ * When `precompiledCss` is provided (the server-compiled Tailwind stylesheet for
+ * the page), it is injected directly and the fixed Tailwind CDN JIT waits are
+ * skipped — the styles are already resolved, so we only wait for layout to
+ * settle. This removes ~1.7s of fixed delay from the AI self-review screenshot
+ * and makes it match what the canvas/published page actually renders.
  */
 async function captureLayersAsBlob(
   layers: Layer[],
-  components: Component[]
+  components: Component[],
+  precompiledCss?: string
 ): Promise<Blob | null> {
   // Resolve component instances
   const { layers: resolvedLayers } = serializeLayers(layers, components);
@@ -97,8 +116,18 @@ async function captureLayersAsBlob(
       fontStyle.textContent = fontsCss;
     }
 
-    // Wait for Tailwind CDN to initialize
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // When the server-compiled stylesheet is available, inject it as the
+    // authoritative styles so we don't depend on (or wait for) the in-iframe
+    // Tailwind CDN JIT to process classes.
+    if (precompiledCss) {
+      const compiledStyle = doc.createElement('style');
+      compiledStyle.id = 'ycode-compiled-css';
+      compiledStyle.textContent = precompiledCss;
+      doc.head.appendChild(compiledStyle);
+    } else {
+      // Wait for Tailwind CDN to initialize
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
 
     const mountPoint = doc.getElementById('thumbnail-mount');
     if (!mountPoint) throw new Error('Mount point not found');
@@ -127,8 +156,14 @@ async function captureLayersAsBlob(
       </div>
     );
 
-    // Wait for React to render + Tailwind to process all classes
-    await new Promise((resolve) => setTimeout(resolve, TAILWIND_INIT_DELAY));
+    // Wait for React to render + styles to apply. With precompiled CSS the
+    // styles resolve synchronously, so a couple of frames to let layout settle
+    // is enough; otherwise give the Tailwind CDN JIT time to process classes.
+    if (precompiledCss) {
+      await waitForFrames(iframe.contentWindow, 2);
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, TAILWIND_INIT_DELAY));
+    }
 
     // Force eager loading — the offscreen iframe won't trigger lazy images
     doc.querySelectorAll('img[loading="lazy"]').forEach((img) => {
@@ -209,14 +244,18 @@ function blobToDataUrl(blob: Blob): Promise<string> {
  * Render layers offscreen and return them as a base64 image (no upload).
  * Used by the AI visual self-review loop to let the agent "see" its work.
  *
+ * @param precompiledCss - Optional server-compiled Tailwind stylesheet for the
+ *   page. When provided, the fixed Tailwind CDN JIT wait is skipped, making the
+ *   capture ~1.7s faster and matching the canvas/published rendering.
  * @returns Image data (base64 + media type + full data URL), or null on failure
  */
 export async function captureLayersImage(
   layers: Layer[],
   components: Component[] = [],
+  precompiledCss?: string,
 ): Promise<{ data: string; mediaType: string; dataUrl: string } | null> {
   try {
-    const blob = await captureLayersAsBlob(layers, components);
+    const blob = await captureLayersAsBlob(layers, components, precompiledCss);
     if (!blob) return null;
     const dataUrl = await blobToDataUrl(blob);
     const comma = dataUrl.indexOf(',');

@@ -233,6 +233,40 @@ async function restoreCheckpointPages(pages: Array<{ pageId: string; layers: Lay
 const turnEditedPageIds = new Set<string>();
 
 /**
+ * Review screenshot started as soon as the edited page's authoritative snapshot
+ * arrived (during the stream), so its offscreen render overlaps the stream tail
+ * (closing summary + usage/done) instead of running strictly after it. The
+ * post-stream review block awaits this when it matches the resolved review page,
+ * otherwise it captures fresh. Reset at the start of every runTurn.
+ */
+type PendingReviewCapture = { pageId: string; promise: Promise<ImageAttachment | null> };
+let pendingReviewCapture: PendingReviewCapture | null = null;
+
+/** Whether the in-progress turn should pre-start a review screenshot (main
+ * turns with auto-review on), and the page pinned when the message was sent. Set
+ * by runTurn before the stream is consumed. */
+let reviewCaptureEnabled = false;
+let reviewCapturePinnedPageId: string | null = null;
+
+/** Kick off the review screenshot for a just-synced page when it's a plausible
+ * review target, so the capture runs while the stream is still finishing. Only
+ * one capture is started per turn; correctness is preserved because the review
+ * block re-resolves the target and falls back to a fresh capture on mismatch. */
+function maybeStartReviewCapture(pageId: string): void {
+  if (!reviewCaptureEnabled || pendingReviewCapture) return;
+  // Prefer the pinned page; when nothing was pinned, take the first edited page.
+  if (reviewCapturePinnedPageId && reviewCapturePinnedPageId !== pageId) return;
+  pendingReviewCapture = { pageId, promise: capturePageImage(pageId) };
+}
+
+/** Read the pipelined capture through a function so control-flow analysis
+ * doesn't narrow the module-level variable to its last in-scope assignment
+ * (it's mutated from applyEvent, which the runTurn closure can't see). */
+function getPendingReviewCapture(): PendingReviewCapture | null {
+  return pendingReviewCapture;
+}
+
+/**
  * Per-turn Changes-card entries, keyed by page id. Populated from the
  * authoritative `page_changed` events the server streams at the end of a turn
  * (it diffs its own cache, so the client never races the realtime broadcast).
@@ -306,13 +340,16 @@ function isVisualMutation(name: string): boolean {
 /** Capture a specific page's draft layers as a base64 image for the agent to
  * review. The page must have loaded drafts (returns null otherwise). */
 async function capturePageImage(pageId: string): Promise<ImageAttachment | null> {
-  const layers = usePagesStore.getState().draftsByPageId[pageId]?.layers;
+  const draft = usePagesStore.getState().draftsByPageId[pageId];
+  const layers = draft?.layers;
   if (!layers || layers.length === 0) return null;
 
   try {
     const { captureLayersImage } = await import('@/lib/client/thumbnail-capture');
     const components = useComponentsStore.getState().components;
-    const shot = await captureLayersImage(layers, components);
+    // Reuse the server-compiled stylesheet (from the page_changed event) so the
+    // capture skips the fixed Tailwind CDN JIT wait and matches the real render.
+    const shot = await captureLayersImage(layers, components, draft.generated_css);
     if (!shot) return null;
     return { mediaType: shot.mediaType, data: shot.data, dataUrl: shot.dataUrl };
   } catch (error) {
@@ -430,6 +467,11 @@ export const useAiChatStore = create<AiChatStore>()(
         turnChanges.clear();
         turnCheckpointPages.clear();
         turnCheckpointPagesAfter.clear();
+        // Reset the pipelined review capture and arm it for main turns only, so
+        // page_changed can pre-start the screenshot while the stream finishes.
+        pendingReviewCapture = null;
+        reviewCaptureEnabled = get().autoReview && reviewDepth < MAX_REVIEW_DEPTH;
+        reviewCapturePinnedPageId = pageId;
         const startedAt = Date.now();
 
         const isReview = reviewDepth > 0;
@@ -567,7 +609,13 @@ export const useAiChatStore = create<AiChatStore>()(
           // canvas — otherwise the agent critiques the wrong page and "fixes" it.
           const reviewPageId = resolveReviewPageId(pageId);
           if (changedVisuals && reviewPageId) {
-            const shot = await capturePageImage(reviewPageId);
+            // Reuse the screenshot started during the stream when it targets the
+            // same page; otherwise capture fresh (e.g. a different page won).
+            const pending = getPendingReviewCapture();
+            const shot =
+              pending && pending.pageId === reviewPageId
+                ? await pending.promise
+                : await capturePageImage(reviewPageId);
             if (shot && !signal.aborted) {
               // The self-review screenshots a page, so it runs with page context
               // only — never carry the component context into the review pass.
@@ -1082,6 +1130,9 @@ function applyEvent(
         if (addedIds.length > 0) {
           useEditorStore.getState().markLayersEntering(addedIds);
         }
+        // Draft + compiled CSS are in sync now, so start the review screenshot
+        // early to overlap its render with the rest of the stream.
+        maybeStartReviewCapture(event.pageId);
       } else {
         // The agent edited a page the user hasn't opened, so there's no draft to
         // update yet. Load it first (the auto-switch effect triggers this too;
