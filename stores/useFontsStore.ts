@@ -120,10 +120,17 @@ export const useFontsStore = create<FontsStore>((set, get) => ({
 
   /** Add a font to the store */
   addFont: (font: Font) => {
-    set((state) => ({
-      fonts: [...state.fonts, font],
-    }));
-    get().rebuildCss();
+    let added = false;
+    set((state) => {
+      // Idempotent: skip if a font with this id already exists so the list can
+      // never hold a duplicate id (which crashes keyed list renders). Guards
+      // against double-invokes (React StrictMode, rapid retries) and any future
+      // realtime create path that could deliver the same font more than once.
+      if (state.fonts.some((existing) => existing.id === font.id)) return state;
+      added = true;
+      return { fonts: [...state.fonts, font] };
+    });
+    if (added) get().rebuildCss();
   },
 
   /** Remove a font from the store */
