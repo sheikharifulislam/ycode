@@ -1260,6 +1260,13 @@ export const usePagesStore = create<PagesStore>((set, get) => ({
 
   addPage: (page: Page) => {
     const { pages } = get();
+    // Idempotent: a `page_created` broadcast is received by every mounted
+    // page-updates subscription (the builder and the pages sidebar both
+    // subscribe), so the same new page can arrive more than once — especially
+    // for AI/MCP-created pages, where the broadcast comes from a separate
+    // connection the acting client also receives. Skip if we already have it so
+    // the pages list never holds a duplicate id (which crashes the tree render).
+    if (pages.some((existing) => existing.id === page.id)) return;
     set({ pages: [...pages, page] });
   },
 
