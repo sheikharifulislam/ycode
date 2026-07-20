@@ -37,9 +37,9 @@ const addLayerOp = z.object({
   text_content: z.string().optional(),
   rich_content: z.array(richTextBlockSchema).optional().describe('For richText: structured content blocks'),
   custom_name: z.string().optional(),
-  ref_id: z.string().optional().describe('A reference ID so later operations can target this layer'),
-  design: designSchema.optional().describe('Design properties to apply immediately on creation'),
+  ref_id: z.string().optional().describe('A reference ID so later operations can target this layer. Style it with a follow-up update_design op referencing this ref_id.'),
   image_asset_id: z.string().optional().describe('For image layers: asset ID to display'),
+  design: designSchema.optional().describe('Optional design to apply inline when creating the layer, instead of a follow-up update_design op.'),
 });
 
 const updateDesignOp = z.object({

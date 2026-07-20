@@ -247,6 +247,11 @@ function normalizeGridSpanValue(value: string): string {
   return value.replace(/^span\s+/i, '').trim();
 }
 
+/** Tailwind `display` utility values the editor supports as bare classes. */
+const DISPLAY_VALUES = new Set([
+  'block', 'inline-block', 'inline', 'flex', 'inline-flex', 'grid', 'inline-grid', 'hidden',
+]);
+
 /**
  * Map of Tailwind class prefixes to their property names
  * Used for conflict detection and removal
@@ -696,8 +701,12 @@ export function propertyToClass(
   // Layout conversions
   if (category === 'layout') {
     switch (property) {
-      case 'display':
-        return value.toLowerCase();
+      case 'display': {
+        // Map CSS synonyms (e.g. "none") to Tailwind's canonical value and
+        // ignore unsupported values so we never emit an invalid class like "none".
+        const normalized = value.toLowerCase() === 'none' ? 'hidden' : value.toLowerCase();
+        return DISPLAY_VALUES.has(normalized) ? normalized : null;
+      }
       case 'flexDirection':
         if (value === 'row') return 'flex-row';
         if (value === 'column') return 'flex-col';

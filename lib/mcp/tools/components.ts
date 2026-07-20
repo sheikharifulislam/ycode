@@ -718,8 +718,11 @@ EXAMPLE: A "Card" component with a title variable:
 
   server.tool(
     'update_component_layers',
-    `Modify a component's layer tree. Works like batch_operations but for component layers.
-Use ref_id in add_layer to name layers, then reference them in later operations.
+    `Edit the inside of a component: add, remove, move, restyle, or set content on the
+layers within a component's tree (the master definition, not a page instance). This is
+the batch_operations equivalent for components — use it to build or change a component's
+internal structure. Use ref_id in add_layer to name layers, then reference them in
+later operations (e.g. a follow-up update_design op to style a just-added layer).
 
 LINKING VARIABLES: A component variable does nothing until it is linked to a layer. Link it
 by passing variable_id on the add_layer operation, or with a separate link_variable operation.
@@ -745,9 +748,9 @@ Pass variant_id to target a specific named variant; omit it to update the primar
           rich_content: z.array(richTextBlockSchema).optional()
             .describe('For richText: structured content blocks. Overrides text_content.'),
           custom_name: z.string().optional(),
-          ref_id: z.string().optional().describe('Reference ID for later operations'),
-          design: designSchema.optional(),
+          ref_id: z.string().optional().describe('Reference ID for later operations. Style it with a follow-up update_design op referencing this ref_id.'),
           image_asset_id: z.string().optional().describe('For image layers: asset ID to display'),
+          design: designSchema.optional().describe('Optional design to apply inline when creating the layer, instead of a follow-up update_design op.'),
           variable_id: z.string().optional()
             .describe('Component variable ID to link to this layer. The bind target is derived from the variable\'s type (text/rich_text/image/link/icon/audio/video/variant) — do not pass a type. Must be an existing variable on the component.'),
         }),
