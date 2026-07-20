@@ -811,16 +811,17 @@ This is the ONLY correct way to structure page sections. The container constrain
 batch_operations({
   page_id: "...",
   operations: [
-    // 1. Section wrapper
-    { type: "add_layer", parent_layer_id: "body", template: "section", ref_id: "hero",
+    // 1. Section wrapper — add the layer, then style it via update_design (ref_id)
+    { type: "add_layer", parent_layer_id: "body", template: "section", ref_id: "hero" },
+    { type: "update_design", layer_id: "hero",
       design: {
         layout: { isActive: true, display: "Flex", flexDirection: "column", alignItems: "center" },
         spacing: { isActive: true, paddingTop: "120px", paddingBottom: "80px" }
       }
     },
     // 2. Container (MANDATORY — constrains content width)
-    { type: "add_layer", parent_layer_id: "hero", template: "div", ref_id: "container",
-      custom_name: "Container",
+    { type: "add_layer", parent_layer_id: "hero", template: "div", ref_id: "container", custom_name: "Container" },
+    { type: "update_design", layer_id: "container",
       design: {
         layout: { isActive: true, display: "Flex", flexDirection: "column", alignItems: "center" },
         sizing: { isActive: true, width: "100%", maxWidth: "1280px" },
@@ -828,8 +829,8 @@ batch_operations({
       }
     },
     // 3. Content wrapper (centers and constrains text)
-    { type: "add_layer", parent_layer_id: "container", template: "div", ref_id: "content",
-      custom_name: "Content",
+    { type: "add_layer", parent_layer_id: "container", template: "div", ref_id: "content", custom_name: "Content" },
+    { type: "update_design", layer_id: "content",
       design: {
         layout: { isActive: true, display: "Flex", flexDirection: "column", alignItems: "center", gap: "24px" },
         sizing: { isActive: true, maxWidth: "720px" }
@@ -853,8 +854,8 @@ batch_operations({
       }
     },
     // 6. Button row
-    { type: "add_layer", parent_layer_id: "content", template: "div", ref_id: "buttons",
-      custom_name: "Buttons",
+    { type: "add_layer", parent_layer_id: "content", template: "div", ref_id: "buttons", custom_name: "Buttons" },
+    { type: "update_design", layer_id: "buttons",
       design: {
         layout: { isActive: true, display: "Flex", flexDirection: "row", gap: "12px" }
       }
@@ -873,6 +874,9 @@ batch_operations({
   ]
 })
 \`\`\`
+
+Style layers with an \`update_design\` operation that references the \`ref_id\` (or layer ID)
+from a prior \`add_layer\` — \`add_layer\` itself only creates the layer.
 
 ### Verify After Building
 
@@ -942,9 +946,8 @@ Use \`batch_operations\` whenever building more than 2-3 layers. It fetches
 the layer tree once, applies all operations, then saves once — much faster.
 
 Key feature: use \`ref_id\` in add_layer operations, then reference that ID
-in later operations within the same batch.
-
-You can also set design inline with add_layer (via the design field) to reduce the number of operations.
+in later operations within the same batch — including an \`update_design\`
+operation to style a layer right after creating it.
 
 ### Responsive Strategy
 

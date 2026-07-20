@@ -25,8 +25,7 @@ const addLayerOp = z.object({
   text_content: z.string().optional(),
   rich_content: z.array(richTextBlockSchema).optional().describe('For richText: structured content blocks'),
   custom_name: z.string().optional(),
-  ref_id: z.string().optional().describe('A reference ID so later operations can target this layer'),
-  design: designSchema.optional().describe('Design properties to apply immediately on creation'),
+  ref_id: z.string().optional().describe('A reference ID so later operations can target this layer. Style it with a follow-up update_design op referencing this ref_id.'),
   image_asset_id: z.string().optional().describe('For image layers: asset ID to display'),
 });
 
@@ -120,16 +119,12 @@ EXAMPLE:
               if (!parent) { results.push({ op: i, status: 'error', detail: `Parent "${op.parent_layer_id}" not found` }); continue; }
               if (!canHaveChildren(parent)) { results.push({ op: i, status: 'error', detail: `"${parent.customName || parent.name}" cannot have children` }); continue; }
 
-              let newLayer = createLayerFromTemplate(op.template, {
+              const newLayer = createLayerFromTemplate(op.template, {
                 customName: op.custom_name,
                 textContent: op.text_content,
                 richContent: op.rich_content as RichTextBlock[] | undefined,
               });
               if (!newLayer) { results.push({ op: i, status: 'error', detail: `Unknown template "${op.template}"` }); continue; }
-
-              if (op.design) {
-                newLayer = applyDesignToLayer(newLayer, op.design as Record<string, Record<string, unknown>>);
-              }
 
               if (op.image_asset_id && newLayer.variables?.image) {
                 newLayer.variables = {

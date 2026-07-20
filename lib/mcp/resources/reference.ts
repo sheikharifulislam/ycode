@@ -42,7 +42,7 @@ const EXAMPLE_PROMPTS = {
     'Use batch_operations whenever building more than 2-3 layers',
     'Create styles (create_style) before building repeating elements',
     'Use ref_id in batch_operations to reference layers created in the same batch',
-    'Set design inline with add_layer to reduce the number of operations',
+    'Style a layer with an update_design operation referencing the ref_id from its add_layer',
     'Use add_font + search_google_fonts to add custom fonts before using them',
     'Always publish after completing changes',
     'For repeating UI primitives, build a component and use create_component_variant for visual flavors',
