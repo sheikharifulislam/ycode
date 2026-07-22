@@ -875,8 +875,8 @@ function ToolCallRow({ call }: { call: ChatToolCall }) {
         <Spinner className="size-3" />
       ) : (
         <Icon
-          name={call.ok ? 'check' : 'x'}
-          className={cn('size-3', call.ok ? 'text-foreground' : 'text-destructive')}
+          name="check"
+          className="size-3 text-foreground"
         />
       )}
       <span>{toolCallLabel(call.name)}</span>
@@ -916,7 +916,11 @@ function groupParts(parts: ChatMessagePart[]): PartGroup[] {
  * collapses once the turn finishes, so the full markdown render only runs when
  * the user re-expands it. */
 function ThinkingTrail({ parts, streaming }: { parts: ChatMessagePart[]; streaming: boolean }) {
-  const groups = groupParts(parts);
+  // Failed tool calls are hidden: the agent retries after errors, so showing
+  // red X rows only alarms the user about steps that were already recovered.
+  // In-flight calls (ok === undefined) stay visible with their spinner.
+  const visibleParts = parts.filter((part) => part.type !== 'tool' || part.call.ok !== false);
+  const groups = groupParts(visibleParts);
   if (groups.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
