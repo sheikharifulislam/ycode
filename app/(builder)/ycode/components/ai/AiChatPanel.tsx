@@ -685,23 +685,27 @@ function ChatHistoryMenu({
               className={cn('group gap-2 pr-1.5', chat.id === currentChatId && 'bg-accent')}
             >
               <span className="flex-1 truncate text-xs">{chat.title}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground group-hover:hidden">
-                {compactTime(chat.updatedAt)}
+              {/* Fixed-width trailing slot: the delete button overlays the timestamp
+                  on hover so the row width never changes (no layout shift). */}
+              <span className="relative flex min-w-5 shrink-0 items-center justify-end">
+                <span className="text-[11px] text-muted-foreground group-hover:invisible">
+                  {compactTime(chat.updatedAt)}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Delete chat"
+                  title="Delete chat"
+                  className="absolute -inset-y-0.5 right-0 hidden w-5 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground group-hover:flex"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onDelete(chat.id);
+                  }}
+                >
+                  <Icon name="trash" className="size-3" />
+                </button>
               </span>
-              <button
-                type="button"
-                aria-label="Delete chat"
-                title="Delete chat"
-                className="hidden size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground group-hover:flex"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onDelete(chat.id);
-                }}
-              >
-                <Icon name="trash" className="size-3" />
-              </button>
             </DropdownMenuItem>
           ))
         )}
