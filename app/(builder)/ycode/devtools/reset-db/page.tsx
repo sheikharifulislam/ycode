@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { clearPersistedAiChats } from '@/stores/useAiChatStore';
 
 export default function ResetDatabasePage() {
   const [loading, setLoading] = useState(false);
@@ -32,6 +33,10 @@ export default function ResetDatabasePage() {
       if (!response.ok) {
         throw new Error(result.error || 'Failed to reset database');
       }
+
+      // The server reset only wipes the database; AI chat history is persisted
+      // in localStorage and would otherwise survive the reset.
+      clearPersistedAiChats();
 
       window.location.href = '/ycode';
     } catch (err) {

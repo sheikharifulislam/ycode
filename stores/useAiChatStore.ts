@@ -805,6 +805,17 @@ export const useAiChatStore = create<AiChatStore>()(
 );
 
 /**
+ * Wipe the persisted AI chat history from localStorage. Used by the project
+ * reset flow: the server reset only drops database tables, but conversations
+ * live client-side, so they must be cleared explicitly or they resurface after
+ * the reset. Callers are expected to hard-reload right after, so the in-memory
+ * state doesn't need resetting here.
+ */
+export function clearPersistedAiChats(): void {
+  useAiChatStore.persist.clearStorage();
+}
+
+/**
  * Append streamed text to the ordered parts list, merging into the trailing
  * text fragment when the last part is text so a contiguous reply stays a single
  * markdown block.

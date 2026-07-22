@@ -25,6 +25,7 @@ import { CodeEditor } from '@/components/ui/code-editor';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { clearPersistedAiChats } from '@/stores/useAiChatStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAssetsStore } from '@/stores/useAssetsStore';
 import type { SitemapSettings, SitemapMode, SitemapChangeFrequency, Asset } from '@/types';
@@ -298,6 +299,10 @@ export default function GeneralSettingsPage() {
       if (!response.ok) {
         throw new Error(result.error || 'Failed to reset project');
       }
+
+      // The server reset only wipes the database; AI chat history is persisted
+      // in localStorage and would otherwise survive the reset.
+      clearPersistedAiChats();
 
       window.location.href = '/ycode';
     } catch (err) {
