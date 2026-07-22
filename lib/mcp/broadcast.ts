@@ -166,3 +166,18 @@ export async function broadcastFontsChanged(): Promise<void> {
     timestamp: Date.now(),
   });
 }
+
+// Color variable broadcasts (channel: color-variables:updates)
+
+/**
+ * Tell open builders the color variable set changed (agent create/update/
+ * delete/reorder). The canvas resolves var(--<id>) references from CSS
+ * generated out of the CLIENT store, so without this refetch signal an
+ * agent-created variable renders as nothing until a full page reload.
+ */
+export async function broadcastColorVariablesChanged(): Promise<void> {
+  await broadcast('color-variables:updates', 'color_variables_changed', {
+    user_id: MCP_USER_ID,
+    timestamp: Date.now(),
+  });
+}
