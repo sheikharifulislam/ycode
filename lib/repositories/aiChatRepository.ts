@@ -17,8 +17,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-server';
 import type { AiChat, AiChatSummary, UpsertAiChatData } from '@/types';
 
 /** Fetch all chats without their transcripts, newest activity first. */
-export async function getAllAiChatSummaries(): Promise<AiChatSummary[]> {
-  const client = await getSupabaseAdmin();
+export async function getAllAiChatSummaries(tenantId?: string): Promise<AiChatSummary[]> {
+  const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase not configured');
@@ -37,8 +37,8 @@ export async function getAllAiChatSummaries(): Promise<AiChatSummary[]> {
 }
 
 /** Fetch a single chat including its full transcript. */
-export async function getAiChatById(id: string): Promise<AiChat | null> {
-  const client = await getSupabaseAdmin();
+export async function getAiChatById(id: string, tenantId?: string): Promise<AiChat | null> {
+  const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase not configured');
@@ -66,8 +66,8 @@ export async function getAiChatById(id: string): Promise<AiChat | null> {
  * sent, and echoing the jsonb row back would double the per-save transfer on
  * long conversations.
  */
-export async function upsertAiChat(chatData: UpsertAiChatData): Promise<void> {
-  const client = await getSupabaseAdmin();
+export async function upsertAiChat(chatData: UpsertAiChatData, tenantId?: string): Promise<void> {
+  const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase not configured');
@@ -90,8 +90,8 @@ export async function upsertAiChat(chatData: UpsertAiChatData): Promise<void> {
   }
 }
 
-export async function deleteAiChat(id: string): Promise<void> {
-  const client = await getSupabaseAdmin();
+export async function deleteAiChat(id: string, tenantId?: string): Promise<void> {
+  const client = await getSupabaseAdmin(tenantId);
 
   if (!client) {
     throw new Error('Supabase not configured');
