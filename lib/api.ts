@@ -891,8 +891,10 @@ export const cacheApi = {
 
 // File Upload API
 
-// Files above this threshold use presigned URLs to bypass serverless body limits
-const DIRECT_UPLOAD_THRESHOLD = 4.5 * 1024 * 1024; // 4.5MB
+// Files above this threshold use presigned URLs to bypass serverless body limits.
+// Vercel caps the serverless request body at ~4.5MB, and multipart/form-data adds
+// encoding overhead on top of the raw file, so we keep headroom below the hard limit.
+const DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024; // 4MB
 
 /**
  * Upload a file via presigned URL (direct browser-to-storage).
@@ -961,7 +963,7 @@ async function uploadViaPresignedUrl(
 
 /**
  * Upload a file and create Asset record.
- * Small files (<4.5MB) go through the server for WebP conversion.
+ * Small files (<4MB) go through the server for WebP conversion.
  * Large files use presigned URLs to upload directly to storage.
  *
  * @param file - File to upload
