@@ -105,11 +105,17 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'public, max-age=432000, s-maxage=432000' },
     });
   } catch (error) {
-    console.error('Geocoding error:', error);
     const message = error instanceof Error ? error.message : 'Failed to geocode address';
+
+    // A missing provider token is an expected config state, not a server error
+    const isNotConfigured = message.includes('not configured');
+    if (!isNotConfigured) {
+      console.error('Geocoding error:', error);
+    }
+
     return NextResponse.json(
       { error: message },
-      { status: message.includes('not configured') ? 400 : 500 }
+      { status: isNotConfigured ? 400 : 500 }
     );
   }
 }
