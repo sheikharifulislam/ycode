@@ -187,9 +187,8 @@ function SortableAnimationItem({
         })()}
       </Badge>
 
-      <span
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
         className="-mr-0.5 p-0.5 rounded-sm opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
         onClick={(e) => {
           e.stopPropagation();
@@ -197,7 +196,7 @@ function SortableAnimationItem({
         }}
       >
         <Icon name="x" className="size-2.5" />
-      </span>
+      </button>
     </div>
   );
 }
@@ -1245,9 +1244,8 @@ export default function InteractionsPanel({
                 {TRIGGER_LABELS[interaction.trigger]}
               </Label>
 
-              <span
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
                 className="ml-auto -my-1 -mr-0.5 p-0.5 rounded-sm opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1255,7 +1253,7 @@ export default function InteractionsPanel({
                 }}
               >
                 <Icon name="x" className="size-2.5" />
-              </span>
+              </button>
             </div>
           ))}
         </div>
@@ -2126,14 +2124,13 @@ export default function InteractionsPanel({
                       <span className="text-xs text-muted-foreground">
                         {propertyOption.label}
                       </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
+                      <button
+                        type="button"
                         className="p-0.5 rounded-sm opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                         onClick={() => handleRemovePropertyFromTween(selectedTween.id, propertyOption.type)}
                       >
                         <Icon name="x" className="size-2.5" />
-                      </span>
+                      </button>
                     </div>
 
                     {propertyOption.properties.map((prop) => {

@@ -136,15 +136,15 @@ function SortableStyleChip({
           <span className="text-yellow-400 text-[10px]">Customized</span>
         )}
       </span>
-      <span
-        role="button"
+      <button
+        type="button"
         tabIndex={-1}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         className="shrink-0 cursor-pointer opacity-60 hover:opacity-100"
       >
         <Icon name="x" className="size-2.5" />
-      </span>
+      </button>
     </div>
   );
 }

@@ -118,16 +118,14 @@ const TransitionControls = memo(function TransitionControls({ layer, onLayerUpda
   }, [deactivate, inputs.delay, updateDesignProperty]);
 
   const renderRemoveButton = (id: string, onRemove: () => void) => (
-    <span
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       aria-label={`Remove ${id}`}
       className="p-0.5 rounded-sm opacity-70 hover:opacity-100 transition-opacity cursor-pointer shrink-0"
       onClick={onRemove}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRemove(); } }}
     >
       <Icon name="x" className="size-2.5" />
-    </span>
+    </button>
   );
 
   return (
