@@ -898,7 +898,7 @@ export default async function PageRenderer({
         />
       )}
 
-      <main
+      <div
         id="ybody"
         className="contents"
         data-layer-id="body"
@@ -945,7 +945,7 @@ export default async function PageRenderer({
             isPublished={passwordProtection.isPublished}
           />
         )}
-      </main>
+      </div>
 
       {/* Initialize GSAP animations based on layer interactions.
           Skipped entirely when no layer has interactions so we don't ship
