@@ -176,7 +176,7 @@ export default function MapSettings({ layer, onLayerUpdate }: MapSettingsProps) 
 
   // Geocoding search via API route
   useEffect(() => {
-    if (!debouncedQuery || debouncedQuery.length < 3) {
+    if (!hasToken || !debouncedQuery || debouncedQuery.length < 3) {
       setSearchResults([]);
       return;
     }
@@ -201,7 +201,7 @@ export default function MapSettings({ layer, onLayerUpdate }: MapSettingsProps) 
         }
       })
       .finally(() => setIsSearching(false));
-  }, [debouncedQuery, provider]);
+  }, [debouncedQuery, provider, hasToken]);
 
   const handleSelectResult = useCallback(
     (result: SearchResult) => {
