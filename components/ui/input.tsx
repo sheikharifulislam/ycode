@@ -141,7 +141,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input({
           step={step}
           className={cn(
             'file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground bg-input border-transparent w-full min-w-0 border transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:font-medium disabled:cursor-not-allowed disabled:opacity-50',
-            'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[0px]',
+            'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-0',
             '',
             'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
             sizeClasses[size],
@@ -156,22 +156,22 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input({
         {!props.disabled && (
           <div className="absolute right-px top-px bottom-px items-center rounded-r-[10px] hidden group-hover:flex px-1.5">
             <div className="flex flex-col -gap-px">
-              <span
-                role="button"
+              <button
+                type="button"
                 tabIndex={-1}
                 className="p-0 opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
                 onClick={handleIncrement}
               >
                 <Icon name="chevronUp" className="size-2.5" />
-              </span>
-              <span
-                role="button"
+              </button>
+              <button
+                type="button"
                 tabIndex={-1}
                 className="p-0 opacity-50 hover:opacity-100 transition-opacity cursor-pointer -mt-0.5"
                 onClick={handleDecrement}
               >
                 <Icon name="chevronDown" className="size-2.5" />
-              </span>
+              </button>
             </div>
           </div>
         )}

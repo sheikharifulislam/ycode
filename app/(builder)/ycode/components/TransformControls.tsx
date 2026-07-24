@@ -167,16 +167,14 @@ const TransformControls = memo(function TransformControls({ layer, onLayerUpdate
   };
 
   const renderRemoveButton = (id: string) => (
-    <span
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       aria-label={`Remove ${id}`}
       className="p-0.5 rounded-sm opacity-70 hover:opacity-100 transition-opacity cursor-pointer shrink-0"
       onClick={removeHandlers[id]}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeHandlers[id](); } }}
     >
       <Icon name="x" className="size-2.5" />
-    </span>
+    </button>
   );
 
   const scaleSliderValue = parseFloat(inputs.scale[0]) || 1;

@@ -512,7 +512,7 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
                         variant="input" size="sm"
                         className="justify-start"
                       >
-                        <div className="size-5 rounded-[6px] shrink-0 -ml-1 relative overflow-hidden outline outline-current/10 outline-offset-[-1px]">
+                        <div className="size-5 rounded-[6px] shrink-0 -ml-1 relative overflow-hidden outline outline-current/10 -outline-offset-1">
                           <div className="absolute inset-0 opacity-15 bg-checkerboard bg-background z-10" />
                         </div>
                         <span className="dark:opacity-50">Add...</span>
@@ -720,14 +720,13 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
                     step={1}
                   />
                 </div>
-                <span
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   className="p-0.5 rounded-sm opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                   onClick={handleRemoveBlur}
                 >
                   <Icon name="x" className="size-2.5" />
-                </span>
+                </button>
               </div>
             </div>
           )}
@@ -757,14 +756,13 @@ const EffectControls = memo(function EffectControls({ layer, onLayerUpdate, acti
                     step={1}
                   />
                 </div>
-                <span
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   className="p-0.5 rounded-sm opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                   onClick={handleRemoveBackdropBlur}
                 >
                   <Icon name="x" className="size-2.5" />
-                </span>
+                </button>
               </div>
             </div>
           )}

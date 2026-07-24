@@ -349,16 +349,9 @@ function ProviderCard({ provider, isConnected, scope, onOpenSettings }: Provider
   const models = AGENT_MODELS.filter((option) => option.provider === provider.id);
 
   return (
-    <div
+    <button
+      type="button"
       onClick={onOpenSettings}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpenSettings();
-        }
-      }}
       className="flex items-center gap-3 w-full p-4 bg-secondary/20 rounded-lg transition-colors text-left hover:bg-secondary/40 cursor-pointer"
     >
       <div className="flex items-center justify-center size-10 rounded-lg bg-secondary shrink-0">
@@ -374,7 +367,7 @@ function ProviderCard({ provider, isConnected, scope, onOpenSettings }: Provider
 
       {isConnected && <ProviderScopeBadge scope={scope} className="shrink-0" />}
       <ProviderStatusBadge isConnected={isConnected} className="shrink-0" />
-    </div>
+    </button>
   );
 }
 
