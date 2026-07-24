@@ -576,6 +576,10 @@ export default async function PageRenderer({
   const { bodyClasses, childLayers: rawChildLayers } = extractBodyLayer(resolvedLayers);
   const hasLayers = rawChildLayers.length > 0;
 
+  // Language for <html lang> and the content wrapper. Falls back to the site's
+  // default locale so the document always advertises a language for a11y/SEO.
+  const resolvedLang = locale?.code || availableLocales.find((l) => l.is_default)?.code || undefined;
+
   // Generate CSS for initial animation states to prevent flickering
   const { css: initialAnimationCSS, hiddenLayerInfo } = generateInitialAnimationCSS(resolvedLayers);
 
@@ -883,13 +887,24 @@ export default async function PageRenderer({
       />
       <BodyClassApplier classes={bodyClasses || 'bg-white'} />
 
+      {/* Set <html lang> from the page locale. The root element is rendered by
+          the shared layout (which can't know the per-page locale), so apply it
+          here where the locale is resolved. */}
+      {resolvedLang && (
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `document.documentElement.lang=${JSON.stringify(resolvedLang)}`,
+          }}
+        />
+      )}
+
       <main
         id="ybody"
         className="contents"
         data-layer-id="body"
         data-layer-type="div"
         data-is-empty={hasLayers ? 'false' : 'true'}
-        lang={(locale?.code || availableLocales.find((l) => l.is_default)?.code) || undefined}
+        lang={resolvedLang}
       >
         <LayerRendererPublic
           layers={childLayers}
